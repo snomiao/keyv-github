@@ -4,6 +4,17 @@ A [Keyv](https://keyv.org/) storage adapter backed by a GitHub repository.
 
 Each **key** is a file path in the repo; the **value** is the file's content.
 
+## ⚠️ WARNING before use this package, beware the GITHUB Rate limits
+
+The GitHub REST API has strict rate limits:
+
+- **Unauthenticated:** 60 requests/hour
+- **Authenticated:** 5,000 requests/hour
+
+Every `set` costs **2 API calls** (read SHA + write), every `delete` costs **2** (read SHA + delete), `clear` and `iterator` cost **2 + N** (tree lookup + one call per file). For high-frequency writes, consider batching or using a different store.
+
+Use a [GitHub App](https://docs.github.com/en/developers/apps) token or a fine-grained PAT with `contents: write` permission to maximise your quota.
+
 ## Install
 
 ```sh
@@ -72,17 +83,6 @@ Keys must be valid relative file paths:
 - No null bytes
 
 Invalid keys throw synchronously before any API request.
-
-## ⚠️ Rate limits
-
-The GitHub REST API has strict rate limits:
-
-- **Unauthenticated:** 60 requests/hour
-- **Authenticated:** 5,000 requests/hour
-
-Every `set` costs **2 API calls** (read SHA + write), every `delete` costs **2** (read SHA + delete), `clear` and `iterator` cost **2 + N** (tree lookup + one call per file). For high-frequency writes, consider batching or using a different store.
-
-Use a [GitHub App](https://docs.github.com/en/developers/apps) token or a fine-grained PAT with `contents: write` permission to maximise your quota.
 
 ## License
 
