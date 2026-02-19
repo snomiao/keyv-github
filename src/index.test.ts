@@ -1,4 +1,5 @@
 import { expect, test, describe } from "bun:test";
+import { Octokit } from "octokit";
 import KeyvGithub from "./index.ts";
 
 // ── Minimal mock for Octokit REST API ──────────────────────────────────────
@@ -100,16 +101,16 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     return { data: { sha: `commit-${nextSha()}` } };
   };
 
-  const updateRef = async (_: any) => ({ data: {} });
+  const updateRef = async (_: { owner: string; repo: string; ref: string; sha: string; force?: boolean }) =>
+    ({ data: {} });
 
-  const mock = {
+  return {
     rest: {
       repos: { getContent, createOrUpdateFileContents, deleteFile },
       git: { getRef, getTree, getCommit, createTree, createCommit, updateRef },
     },
     messages,
-  } as any;
-  return mock;
+  };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -117,8 +118,8 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
 function makeStore(files?: Map<string, FileRecord>, options?: Parameters<typeof KeyvGithub.prototype.constructor>[1]) {
   const mockFiles = files ?? new Map<string, FileRecord>();
   const client = makeMockClient(mockFiles);
-  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client, ...options });
-  return { store, mockFiles, messages: client.messages as string[] };
+  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client: client as unknown as Octokit, ...options });
+  return { store, mockFiles, messages: client.messages };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────

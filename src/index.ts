@@ -45,6 +45,10 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.enableClear = options.enableClear ?? false;
   }
 
+  private static isHttpError(e: unknown): e is { status: number } {
+    return typeof e === "object" && e !== null && "status" in e && typeof (e as Record<string, unknown>).status === "number";
+  }
+
   private validateKey(key: string): void {
     if (!key) throw new Error("Key must not be empty");
     if (key.startsWith("/")) throw new Error(`Key must not start with '/': ${key}`);
@@ -66,8 +70,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       });
       if (Array.isArray(data) || data.type !== "file") return undefined;
       return Buffer.from(data.content, "base64").toString("utf-8") as StoredData<Value>;
-    } catch (e: any) {
-      if (e.status === 404) return undefined;
+    } catch (e: unknown) {
+      if (KeyvGithub.isHttpError(e) && e.status === 404) return undefined;
       throw e;
     }
   }
@@ -83,8 +87,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         ref: this.branch,
       });
       if (!Array.isArray(data) && data.type === "file") sha = data.sha;
-    } catch (e: any) {
-      if (e.status !== 404) throw e;
+    } catch (e: unknown) {
+      if (!KeyvGithub.isHttpError(e) || e.status !== 404) throw e;
     }
 
     await this.client.rest.repos.createOrUpdateFileContents({
@@ -117,8 +121,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         branch: this.branch,
       });
       return true;
-    } catch (e: any) {
-      if (e.status === 404) return false;
+    } catch (e: unknown) {
+      if (KeyvGithub.isHttpError(e) && e.status === 404) return false;
       throw e;
     }
   }
@@ -133,8 +137,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         ref: this.branch,
       });
       return !Array.isArray(data) && data.type === "file";
-    } catch (e: any) {
-      if (e.status === 404) return false;
+    } catch (e: unknown) {
+      if (KeyvGithub.isHttpError(e) && e.status === 404) return false;
       throw e;
     }
   }
