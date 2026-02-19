@@ -25,7 +25,6 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
-  client: Octokit;
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
@@ -40,8 +39,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
     this.opts = { url, ...options };
-    this.client = options.client instanceof Octokit ? options.client : options.client ?? new Octokit();
-    this.rest = this.client.rest;
+    this.rest = options.client instanceof Octokit ? options.client.rest : options.client ?? new Octokit().rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
     this.enableClear = options.enableClear ?? false;
   }
