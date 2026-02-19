@@ -12,17 +12,19 @@ export interface KeyvGithubOptions {
  * Example: new KeyvGithub("https://github.com/owner/repo", { branch: "main" })
  */
 export default class KeyvGithub {
-  private owner: string;
-  private repo: string;
-  private branch: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly branch: string;
   private client: Octokit;
 
   constructor(repoUrl: string, options: KeyvGithubOptions = {}) {
-    const match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?(\/.*)?$/);
+    // github.com prefix is optional: "owner/repo/tree/branch" works too
+    // RegExp string avoids native-TS-preview parser issues with char classes containing ? or #
+    const match = repoUrl.match(new RegExp("(?:.*github\\.com[/:])?([^/:]+)/([^/]+?)(?:\\.git)?(?:/tree/([^?#]+))?(?:[?#].*)?$"));
     if (!match) throw new Error(`Invalid GitHub repo URL: ${repoUrl}`);
     this.owner = match[1]!;
     this.repo = match[2]!;
-    this.branch = options.branch ?? "main";
+    this.branch = options.branch ?? match[3] ?? "main";
     this.client = options.client ?? new Octokit();
   }
 

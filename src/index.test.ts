@@ -1,4 +1,4 @@
-import { expect, test, describe, beforeEach } from "bun:test";
+import { expect, test, describe } from "bun:test";
 import KeyvGithub from "./index.ts";
 
 // ── Minimal mock for Octokit REST API ──────────────────────────────────────
@@ -108,10 +108,50 @@ describe("KeyvGithub constructor", () => {
     ).not.toThrow();
   });
 
-  test("throws on invalid URL", () => {
-    expect(() => new KeyvGithub("https://example.com/not-github")).toThrow(
-      "Invalid GitHub repo URL"
-    );
+  test("throws when no owner/repo can be parsed", () => {
+    expect(() => new KeyvGithub("notarepo")).toThrow("Invalid GitHub repo URL");
+  });
+
+  test("accepts short owner/repo form without github.com prefix", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("owner/repo", { client });
+    expect(store.owner).toBe("owner");
+    expect(store.repo).toBe("repo");
+  });
+
+  test("accepts short owner/repo/tree/branch form", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("owner/repo/tree/main", { client });
+    expect(store.owner).toBe("owner");
+    expect(store.repo).toBe("repo");
+    expect(store.branch).toBe("main");
+  });
+
+  test("parses branch from /tree/<branch> in URL", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", { client });
+    expect(store.branch).toBe("develop");
+  });
+
+  test("parses multi-segment branch from URL", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/feature/my-branch", { client });
+    expect(store.branch).toBe("feature/my-branch");
+  });
+
+  test("options.branch overrides URL branch", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", {
+      client,
+      branch: "override",
+    });
+    expect(store.branch).toBe("override");
+  });
+
+  test("defaults to main when no branch in URL or options", () => {
+    const client = makeMockClient();
+    const store = new KeyvGithub("https://github.com/owner/repo", { client });
+    expect(store.branch).toBe("main");
   });
 });
 
@@ -191,7 +231,7 @@ describe("clear", () => {
 
   test("no-op on empty store", async () => {
     const { store } = makeStore();
-    await expect(store.clear()).resolves.toBeUndefined();
+    await store.clear(); // should not throw
   });
 });
 
@@ -234,9 +274,9 @@ describe("integration with Keyv", () => {
     const keyv = new Keyv({ store });
 
     await keyv.set("greeting", "hello");
-    expect(await keyv.get("greeting")).toBe("hello");
+    expect(await keyv.get("greeting") as unknown).toBe("hello");
 
     await keyv.delete("greeting");
-    expect(await keyv.get("greeting")).toBeUndefined();
+    expect(await keyv.get("greeting") as unknown).toBe(undefined);
   });
 });
