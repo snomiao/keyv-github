@@ -68,10 +68,10 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     return { data: {} };
   };
 
-  // For clear() / iterator() – git tree
-  const getRef = async () => ({ data: { object: { sha: "tree-root-sha" } } });
+  // Git Data API – used by _batchCommit, clear, iterator, deleteMany
+  const getRef = async () => ({ data: { object: { sha: "head-sha" } } });
 
-  const getTree = async ({ recursive }: { tree_sha: string; recursive?: string }) => {
+  const getTree = async (_: { tree_sha: string; recursive?: string }) => {
     const blobs = Array.from(files.entries()).map(([path]) => ({
       type: "blob" as const,
       path,
@@ -79,10 +79,33 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     return { data: { tree: blobs, truncated: false } };
   };
 
+  const getCommit = async (_: { commit_sha: string }) => ({
+    data: { tree: { sha: "base-tree-sha" } },
+  });
+
+  // Applies inline content / sha:null deletions to the files map
+  const createTree = async ({ tree }: { base_tree?: string; tree: any[] }) => {
+    for (const entry of tree) {
+      if (entry.sha === null) {
+        files.delete(entry.path);
+      } else if (entry.content !== undefined) {
+        files.set(entry.path, { content: entry.content, sha: nextSha() });
+      }
+    }
+    return { data: { sha: `tree-${nextSha()}` } };
+  };
+
+  const createCommit = async ({ message }: { message: string; tree: string; parents: string[] }) => {
+    messages.push(message);
+    return { data: { sha: `commit-${nextSha()}` } };
+  };
+
+  const updateRef = async (_: any) => ({ data: {} });
+
   const mock = {
     rest: {
       repos: { getContent, createOrUpdateFileContents, deleteFile },
-      git: { getRef, getTree },
+      git: { getRef, getTree, getCommit, createTree, createCommit, updateRef },
     },
     messages,
   } as any;
@@ -279,6 +302,83 @@ describe("clear", () => {
   test("no-op on empty store when enableClear is true", async () => {
     const { store } = makeStore(undefined, { enableClear: true });
     await store.clear(); // should not throw
+  });
+});
+
+describe("setMany", () => {
+  test("writes multiple files in one batch", async () => {
+    const { store, mockFiles, messages } = makeStore();
+    await store.setMany([
+      ["a/1.txt", "hello"],
+      ["b/2.txt", "world"],
+      ["c/3.txt", "!"],
+    ]);
+    expect(mockFiles.get("a/1.txt")?.content).toBe("hello");
+    expect(mockFiles.get("b/2.txt")?.content).toBe("world");
+    expect(mockFiles.get("c/3.txt")?.content).toBe("!");
+    expect(messages).toHaveLength(1); // single commit
+    expect(messages[0]).toBe("batch update 3 files");
+  });
+
+  test("uses msg hook for single-entry batch", async () => {
+    const { store, messages } = makeStore(undefined, {
+      msg: (key, value) => `custom: ${key}=${value}`,
+    });
+    await store.setMany([["x/y", "v"]]);
+    expect(messages[0]).toBe("custom: x/y=v");
+  });
+
+  test("no-op for empty array", async () => {
+    const { store, messages } = makeStore();
+    await store.setMany([]);
+    expect(messages).toHaveLength(0);
+  });
+
+  test("validates all keys before writing", async () => {
+    const { store, mockFiles } = makeStore();
+    expect(store.setMany([["good/key", "v"], ["../bad", "v"]])).rejects.toThrow();
+    expect(mockFiles.size).toBe(0);
+  });
+});
+
+describe("deleteMany", () => {
+  test("deletes multiple existing files in one batch", async () => {
+    const files = new Map<string, FileRecord>([
+      ["a", { content: "1", sha: "s1" }],
+      ["b", { content: "2", sha: "s2" }],
+      ["c", { content: "3", sha: "s3" }],
+    ]);
+    const { store, mockFiles, messages } = makeStore(files);
+    const result = await store.deleteMany(["a", "b"]);
+    expect(result).toEqual([true, true]);
+    expect(mockFiles.has("a")).toBe(false);
+    expect(mockFiles.has("b")).toBe(false);
+    expect(mockFiles.has("c")).toBe(true);
+    expect(messages).toHaveLength(1); // single commit
+    expect(messages[0]).toBe("batch delete 2 files");
+  });
+
+  test("returns false for keys that do not exist", async () => {
+    const files = new Map([["exists", { content: "v", sha: "s" }]]);
+    const { store } = makeStore(files);
+    const result = await store.deleteMany(["exists", "missing"]);
+    expect(result).toEqual([true, false]);
+  });
+
+  test("no-op and returns [] for empty array", async () => {
+    const { store, messages } = makeStore();
+    const result = await store.deleteMany([]);
+    expect(result).toEqual([]);
+    expect(messages).toHaveLength(0);
+  });
+
+  test("uses msg hook for single-key batch", async () => {
+    const files = new Map([["k", { content: "v", sha: "s" }]]);
+    const { store, messages } = makeStore(files, {
+      msg: (key, value) => `rm: ${key} (${value ?? "null"})`,
+    });
+    await store.deleteMany(["k"]);
+    expect(messages[0]).toBe("rm: k (null)");
   });
 });
 

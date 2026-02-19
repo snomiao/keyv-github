@@ -132,9 +132,119 @@ export default class KeyvGithub {
     }
   }
 
+  /**
+   * Commit multiple file changes in one roundtrip: 5 API calls for any N.
+   * set entries: written inline into the tree (no separate blob creation).
+   * delete paths: removed by setting sha: null in the tree.
+   */
+  private async _batchCommit(params: {
+    set?: [string, string][];
+    delete?: string[];
+    message: string;
+  }): Promise<void> {
+    const { set = [], delete: del = [], message } = params;
+
+    const { data: refData } = await this.client.rest.git.getRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `heads/${this.branch}`,
+    });
+    const headSha = refData.object.sha;
+
+    const { data: commitData } = await this.client.rest.git.getCommit({
+      owner: this.owner,
+      repo: this.repo,
+      commit_sha: headSha,
+    });
+
+    const treeEntries = [
+      ...set.map(([path, content]) => ({
+        path,
+        mode: "100644" as const,
+        type: "blob" as const,
+        content,
+      })),
+      ...del.map((path) => ({
+        path,
+        mode: "100644" as const,
+        type: "blob" as const,
+        sha: null,
+      })),
+    ];
+
+    const { data: newTree } = await this.client.rest.git.createTree({
+      owner: this.owner,
+      repo: this.repo,
+      base_tree: commitData.tree.sha,
+      tree: treeEntries,
+    });
+
+    const { data: newCommit } = await this.client.rest.git.createCommit({
+      owner: this.owner,
+      repo: this.repo,
+      message,
+      tree: newTree.sha,
+      parents: [headSha],
+    });
+
+    await this.client.rest.git.updateRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `heads/${this.branch}`,
+      sha: newCommit.sha,
+    });
+  }
+
+  /** Write multiple keys in a single commit (5 API calls total). */
+  async setMany(entries: [string, string][]): Promise<void> {
+    if (entries.length === 0) return;
+    for (const [key] of entries) this.validateKey(key);
+    const message =
+      entries.length === 1
+        ? this.msg(entries[0]![0], entries[0]![1])
+        : `batch update ${entries.length} files`;
+    await this._batchCommit({ set: entries, message });
+  }
+
+  /**
+   * Delete multiple keys in a single commit (7 API calls total).
+   * Returns a boolean[] indicating which keys existed.
+   */
+  async deleteMany(keys: string[]): Promise<boolean[]> {
+    if (keys.length === 0) return [];
+    for (const key of keys) this.validateKey(key);
+
+    const { data: refData } = await this.client.rest.git.getRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `heads/${this.branch}`,
+    });
+    const { data: treeData } = await this.client.rest.git.getTree({
+      owner: this.owner,
+      repo: this.repo,
+      tree_sha: refData.object.sha,
+      recursive: "1",
+    });
+    const existingPaths = new Set(
+      treeData.tree.filter((i) => i.type === "blob" && i.path).map((i) => i.path!)
+    );
+
+    const toDelete = keys.filter((k) => existingPaths.has(k));
+    if (toDelete.length > 0) {
+      const message =
+        toDelete.length === 1
+          ? this.msg(toDelete[0]!, null)
+          : `batch delete ${toDelete.length} files`;
+      await this._batchCommit({ delete: toDelete, message });
+    }
+
+    return keys.map((k) => existingPaths.has(k));
+  }
+
   async clear(): Promise<void> {
     if (!this.enableClear)
       throw new Error("clear() is disabled. Set enableClear: true in options to allow it.");
+
     const { data: refData } = await this.client.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
@@ -147,9 +257,15 @@ export default class KeyvGithub {
       recursive: "1",
     });
 
-    const files = treeData.tree.filter((item) => item.type === "blob" && item.path);
-    for (const file of files) {
-      if (file.path) await this.delete(file.path);
+    const allPaths = treeData.tree
+      .filter((i) => i.type === "blob" && i.path)
+      .map((i) => i.path!);
+
+    if (allPaths.length > 0) {
+      await this._batchCommit({
+        delete: allPaths,
+        message: `clear: remove ${allPaths.length} files`,
+      });
     }
   }
 
