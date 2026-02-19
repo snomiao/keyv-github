@@ -29,7 +29,7 @@ import Keyv from "keyv";
 import KeyvGithub from "keyv-github";
 
 const store = new KeyvGithub("https://github.com/owner/repo/tree/main", {
-  client: new Octokit({ auth: process.env.GITHUB_TOKEN }),
+  client: new Octokit({ auth: process.env.GITHUB_TOKEN }), // only required if you want .set(), or .get() in private repo
 });
 
 const kv = new Keyv({ store });

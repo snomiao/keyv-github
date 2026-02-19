@@ -1,12 +1,13 @@
 {
   "name": "keyv-github",
+  "version": "1.0.0",
   "module": "src/index.ts",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
     }
   },
   "type": "module",
@@ -16,7 +17,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "tsdown": "^0.20.3"
+    "tsdown": "^0.20.3",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "tsdown",
