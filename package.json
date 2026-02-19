@@ -1,0 +1,25 @@
+{
+  "name": "keyv-github",
+  "module": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "keyv": "^5.6.0",
+    "octokit": "^5.0.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsdown": "^0.20.3"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "bun test"
+  }
+}
