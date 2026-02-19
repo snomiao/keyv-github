@@ -1,4 +1,6 @@
+import { EventEmitter } from "events";
 import { Octokit } from "octokit";
+import type { KeyvStoreAdapter, StoredData } from "keyv";
 
 export interface KeyvGithubOptions {
   branch?: string;
@@ -13,9 +15,12 @@ export interface KeyvGithubOptions {
  * Keyv storage adapter backed by a GitHub repository.
  *
  * Each key is a file path in the repo; the file content is the value.
- * Example: new KeyvGithub("https://github.com/owner/repo", { branch: "main" })
+ * Example: new KeyvGithub("https://github.com/owner/repo/tree/main", { client })
  */
-export default class KeyvGithub {
+export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
+  opts: any = { url: "" };
+  namespace?: string;
+
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
@@ -25,6 +30,7 @@ export default class KeyvGithub {
   readonly enableClear: boolean;
 
   constructor(repoUrl: string, options: KeyvGithubOptions = {}) {
+    super();
     // github.com prefix is optional: "owner/repo/tree/branch" works too
     // RegExp string avoids native-TS-preview parser issues with char classes containing ? or #
     const match = repoUrl.match(new RegExp("(?:.*github\\.com[/:])?([^/:]+)/([^/]+?)(?:\\.git)?(?:/tree/([^?#]+))?(?:[?#].*)?$"));
@@ -32,8 +38,8 @@ export default class KeyvGithub {
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
-    this.client = options.client instanceof Octokit ? options.client : options.client ??new Octokit();
-    this.rest = this.client.rest; // for easier access in methods
+    this.client = options.client instanceof Octokit ? options.client : options.client ?? new Octokit();
+    this.rest = this.client.rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
     this.enableClear = options.enableClear ?? false;
   }
@@ -48,7 +54,7 @@ export default class KeyvGithub {
       throw new Error(`Key must not contain '.' or '..' segments: ${key}`);
   }
 
-  async get(key: string): Promise<string | undefined> {
+  async get<Value>(key: string): Promise<StoredData<Value> | undefined> {
     this.validateKey(key);
     try {
       const { data } = await this.client.rest.repos.getContent({
@@ -58,14 +64,14 @@ export default class KeyvGithub {
         ref: this.branch,
       });
       if (Array.isArray(data) || data.type !== "file") return undefined;
-      return Buffer.from(data.content, "base64").toString("utf-8");
+      return Buffer.from(data.content, "base64").toString("utf-8") as StoredData<Value>;
     } catch (e: any) {
       if (e.status === 404) return undefined;
       throw e;
     }
   }
 
-  async set(key: string, value: string): Promise<void> {
+  async set(key: string, value: any, _ttl?: number): Promise<void> {
     this.validateKey(key);
     let sha: string | undefined;
     try {
@@ -85,7 +91,7 @@ export default class KeyvGithub {
       repo: this.repo,
       path: key,
       message: this.msg(key, value),
-      content: Buffer.from(value).toString("base64"),
+      content: Buffer.from(String(value)).toString("base64"),
       sha,
       branch: this.branch,
     });
@@ -195,9 +201,10 @@ export default class KeyvGithub {
     });
   }
 
-  /** Write multiple keys in a single commit (5 API calls total). */
-  async setMany(entries: [string, string][]): Promise<void> {
-    if (entries.length === 0) return;
+  /** Keyv batch-set: writes multiple keys in a single commit (5 API calls total). */
+  async setMany(values: Array<{ key: string; value: any; ttl?: number }>): Promise<void> {
+    if (values.length === 0) return;
+    const entries: [string, string][] = values.map(({ key, value }) => [key, String(value)]);
     for (const [key] of entries) this.validateKey(key);
     const message =
       entries.length === 1
@@ -207,11 +214,11 @@ export default class KeyvGithub {
   }
 
   /**
-   * Delete multiple keys in a single commit (7 API calls total).
-   * Returns a boolean[] indicating which keys existed.
+   * Keyv batch-delete: deletes multiple keys in a single commit (7 API calls total).
+   * Returns true if any keys were deleted.
    */
-  async deleteMany(keys: string[]): Promise<boolean[]> {
-    if (keys.length === 0) return [];
+  async deleteMany(keys: string[]): Promise<boolean> {
+    if (keys.length === 0) return false;
     for (const key of keys) this.validateKey(key);
 
     const { data: refData } = await this.client.rest.git.getRef({
@@ -230,15 +237,14 @@ export default class KeyvGithub {
     );
 
     const toDelete = keys.filter((k) => existingPaths.has(k));
-    if (toDelete.length > 0) {
-      const message =
-        toDelete.length === 1
-          ? this.msg(toDelete[0]!, null)
-          : `batch delete ${toDelete.length} files`;
-      await this._batchCommit({ delete: toDelete, message });
-    }
+    if (toDelete.length === 0) return false;
 
-    return keys.map((k) => existingPaths.has(k));
+    const message =
+      toDelete.length === 1
+        ? this.msg(toDelete[0]!, null)
+        : `batch delete ${toDelete.length} files`;
+    await this._batchCommit({ delete: toDelete, message });
+    return true;
   }
 
   async clear(): Promise<void> {
@@ -269,7 +275,7 @@ export default class KeyvGithub {
     }
   }
 
-  async *iterator(prefix?: string): AsyncGenerator<[string, string]> {
+  async *iterator<Value>(prefix?: string): AsyncGenerator<[string, Value | undefined]> {
     const { data: refData } = await this.client.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
@@ -288,8 +294,8 @@ export default class KeyvGithub {
 
     for (const file of files) {
       if (file.path) {
-        const value = await this.get(file.path);
-        if (value !== undefined) yield [file.path, value];
+        const value = await this.get<Value>(file.path);
+        if (value !== undefined) yield [file.path, value as Value];
       }
     }
   }

@@ -309,9 +309,9 @@ describe("setMany", () => {
   test("writes multiple files in one batch", async () => {
     const { store, mockFiles, messages } = makeStore();
     await store.setMany([
-      ["a/1.txt", "hello"],
-      ["b/2.txt", "world"],
-      ["c/3.txt", "!"],
+      { key: "a/1.txt", value: "hello" },
+      { key: "b/2.txt", value: "world" },
+      { key: "c/3.txt", value: "!" },
     ]);
     expect(mockFiles.get("a/1.txt")?.content).toBe("hello");
     expect(mockFiles.get("b/2.txt")?.content).toBe("world");
@@ -324,7 +324,7 @@ describe("setMany", () => {
     const { store, messages } = makeStore(undefined, {
       msg: (key, value) => `custom: ${key}=${value}`,
     });
-    await store.setMany([["x/y", "v"]]);
+    await store.setMany([{ key: "x/y", value: "v" }]);
     expect(messages[0]).toBe("custom: x/y=v");
   });
 
@@ -336,13 +336,13 @@ describe("setMany", () => {
 
   test("validates all keys before writing", async () => {
     const { store, mockFiles } = makeStore();
-    expect(store.setMany([["good/key", "v"], ["../bad", "v"]])).rejects.toThrow();
+    expect(store.setMany([{ key: "good/key", value: "v" }, { key: "../bad", value: "v" }])).rejects.toThrow();
     expect(mockFiles.size).toBe(0);
   });
 });
 
 describe("deleteMany", () => {
-  test("deletes multiple existing files in one batch", async () => {
+  test("deletes multiple existing files in one batch, returns true", async () => {
     const files = new Map<string, FileRecord>([
       ["a", { content: "1", sha: "s1" }],
       ["b", { content: "2", sha: "s2" }],
@@ -350,7 +350,7 @@ describe("deleteMany", () => {
     ]);
     const { store, mockFiles, messages } = makeStore(files);
     const result = await store.deleteMany(["a", "b"]);
-    expect(result).toEqual([true, true]);
+    expect(result).toBe(true);
     expect(mockFiles.has("a")).toBe(false);
     expect(mockFiles.has("b")).toBe(false);
     expect(mockFiles.has("c")).toBe(true);
@@ -358,17 +358,16 @@ describe("deleteMany", () => {
     expect(messages[0]).toBe("batch delete 2 files");
   });
 
-  test("returns false for keys that do not exist", async () => {
-    const files = new Map([["exists", { content: "v", sha: "s" }]]);
-    const { store } = makeStore(files);
-    const result = await store.deleteMany(["exists", "missing"]);
-    expect(result).toEqual([true, false]);
+  test("returns false when no keys exist", async () => {
+    const { store } = makeStore();
+    const result = await store.deleteMany(["missing"]);
+    expect(result).toBe(false);
   });
 
-  test("no-op and returns [] for empty array", async () => {
+  test("returns false for empty array", async () => {
     const { store, messages } = makeStore();
     const result = await store.deleteMany([]);
-    expect(result).toEqual([]);
+    expect(result).toBe(false);
     expect(messages).toHaveLength(0);
   });
 
