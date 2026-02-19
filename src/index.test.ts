@@ -448,6 +448,70 @@ describe("msg hook", () => {
   });
 });
 
+describe("prefix and suffix options", () => {
+  test("get uses prefix+key+suffix as path", async () => {
+    const files = new Map([["data/hello.json", { content: "world", sha: "abc" }]]);
+    const { store } = makeStore(files, { prefix: "data/", suffix: ".json" });
+    expect(await store.get<string>("hello")).toBe("world");
+  });
+
+  test("set writes to prefix+key+suffix path", async () => {
+    const { store, mockFiles } = makeStore(undefined, { prefix: "data/", suffix: ".json" });
+    await store.set("foo", "bar");
+    expect(mockFiles.get("data/foo.json")?.content).toBe("bar");
+    expect(mockFiles.has("foo")).toBe(false);
+  });
+
+  test("delete removes prefix+key+suffix path", async () => {
+    const files = new Map([["data/foo.json", { content: "v", sha: "s1" }]]);
+    const { store, mockFiles } = makeStore(files, { prefix: "data/", suffix: ".json" });
+    const result = await store.delete("foo");
+    expect(result).toBe(true);
+    expect(mockFiles.has("data/foo.json")).toBe(false);
+  });
+
+  test("has checks prefix+key+suffix path", async () => {
+    const files = new Map([["data/foo.json", { content: "v", sha: "s1" }]]);
+    const { store } = makeStore(files, { prefix: "data/", suffix: ".json" });
+    expect(await store.has("foo")).toBe(true);
+    expect(await store.has("bar")).toBe(false);
+  });
+
+  test("iterator yields middle key and filters by prefix/suffix", async () => {
+    const files = new Map<string, FileRecord>([
+      ["data/a.json", { content: "1", sha: "s1" }],
+      ["data/b.json", { content: "2", sha: "s2" }],
+      ["other/c.json", { content: "3", sha: "s3" }],
+      ["data/d.txt",  { content: "4", sha: "s4" }],
+    ]);
+    const { store } = makeStore(files, { prefix: "data/", suffix: ".json" });
+    const results: [string, unknown][] = [];
+    for await (const entry of store.iterator()) {
+      results.push(entry);
+    }
+    expect(results.length).toBe(2);
+    expect(results.find(([k]) => k === "a")?.[1]).toBe("1");
+    expect(results.find(([k]) => k === "b")?.[1]).toBe("2");
+  });
+
+  test("clear only removes files matching prefix/suffix", async () => {
+    const files = new Map<string, FileRecord>([
+      ["data/a.json", { content: "1", sha: "s1" }],
+      ["other/b.txt", { content: "2", sha: "s2" }],
+    ]);
+    const { store, mockFiles } = makeStore(files, { prefix: "data/", suffix: ".json", enableClear: true });
+    await store.clear();
+    expect(mockFiles.has("data/a.json")).toBe(false);
+    expect(mockFiles.has("other/b.txt")).toBe(true);
+  });
+
+  test("defaults to empty prefix and suffix (path === key)", async () => {
+    const { store, mockFiles } = makeStore();
+    await store.set("plain", "value");
+    expect(mockFiles.get("plain")?.content).toBe("value");
+  });
+});
+
 describe("integration with Keyv", () => {
   test("works as a Keyv storage adapter", async () => {
     const { default: Keyv } = await import("keyv");

@@ -10,6 +10,10 @@ export interface KeyvGithubOptions {
   msg?: (key: string, value: string | null) => string;
   /** clear() deletes every file in the repo and is disabled by default. Set to true to allow it. */
   enableClear?: boolean;
+  /** Path prefix prepended to every key (e.g. 'data/'). Defaults to ''. */
+  prefix?: string;
+  /** Path suffix appended to every key (e.g. '.json'). Defaults to ''. */
+  suffix?: string;
 }
 
 /**
@@ -30,6 +34,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
+  readonly prefix: string;
+  readonly suffix: string;
 
   constructor(url: string, options: Omit<KeyvGithubOptions, "url"> = {}) {
     super();
@@ -44,29 +50,46 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.rest = options.client instanceof Octokit ? options.client.rest : options.client ?? new Octokit().rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
     this.enableClear = options.enableClear ?? false;
+    this.prefix = options.prefix ?? "";
+    this.suffix = options.suffix ?? "";
+  }
+
+  /** Converts a user key to the GitHub file path. */
+  private toPath(key: string): string {
+    return this.prefix + key + this.suffix;
+  }
+
+  /**
+   * Converts a GitHub file path back to a user key.
+   * Returns null if the path does not match the configured prefix/suffix.
+   */
+  private fromPath(path: string): string | null {
+    if (!path.startsWith(this.prefix) || !path.endsWith(this.suffix)) return null;
+    const end = this.suffix ? path.length - this.suffix.length : undefined;
+    return path.slice(this.prefix.length, end);
   }
 
   private static isHttpError(e: unknown): e is { status: number } {
     return typeof e === "object" && e !== null && "status" in e && typeof (e as Record<string, unknown>).status === "number";
   }
 
-  private validateKey(key: string): void {
-    if (!key) throw new Error("Key must not be empty");
-    if (key.startsWith("/")) throw new Error(`Key must not start with '/': ${key}`);
-    if (key.endsWith("/")) throw new Error(`Key must not end with '/': ${key}`);
-    if (key.includes("//")) throw new Error(`Key must not contain '//': ${key}`);
-    if (key.includes("\0")) throw new Error(`Key must not contain null bytes: ${key}`);
-    if (key.split("/").some((seg) => seg === ".." || seg === "."))
-      throw new Error(`Key must not contain '.' or '..' segments: ${key}`);
+  private validatePath(path: string): void {
+    if (!path) throw new Error("Path must not be empty");
+    if (path.startsWith("/")) throw new Error(`Path must not start with '/': ${path}`);
+    if (path.endsWith("/")) throw new Error(`Path must not end with '/': ${path}`);
+    if (path.includes("//")) throw new Error(`Path must not contain '//': ${path}`);
+    if (path.includes("\0")) throw new Error(`Path must not contain null bytes: ${path}`);
+    if (path.split("/").some((seg) => seg === ".." || seg === "."))
+      throw new Error(`Path must not contain '.' or '..' segments: ${path}`);
   }
 
   async get<Value>(key: string): Promise<StoredData<Value> | undefined> {
-    this.validateKey(key);
+    this.validatePath(this.toPath(key));
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: key,
+        path: this.toPath(key),
         ref: this.ref,
       });
       if (Array.isArray(data) || data.type !== "file") return undefined;
@@ -78,13 +101,14 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   async set(key: string, value: any, _ttl?: number): Promise<void> {
-    this.validateKey(key);
+    this.validatePath(this.toPath(key));
+    const path = this.toPath(key);
     let sha: string | undefined;
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: key,
+        path,
         ref: this.ref,
       });
       if (!Array.isArray(data) && data.type === "file") sha = data.sha;
@@ -95,8 +119,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     await this.rest.repos.createOrUpdateFileContents({
       owner: this.owner,
       repo: this.repo,
-      path: key,
-      message: this.msg(key, value),
+      path,
+      message: this.msg(path, value),
       content: Buffer.from(String(value)).toString("base64"),
       sha,
       branch: this.ref,
@@ -104,20 +128,21 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   async delete(key: string): Promise<boolean> {
-    this.validateKey(key);
+    this.validatePath(this.toPath(key));
+    const path = this.toPath(key);
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: key,
+        path,
         ref: this.ref,
       });
       if (Array.isArray(data) || data.type !== "file") return false;
       await this.rest.repos.deleteFile({
         owner: this.owner,
         repo: this.repo,
-        path: key,
-        message: this.msg(key, null),
+        path,
+        message: this.msg(path, null),
         sha: data.sha,
         branch: this.ref,
       });
@@ -129,12 +154,12 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   async has(key: string): Promise<boolean> {
-    this.validateKey(key);
+    this.validatePath(this.toPath(key));
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: key,
+        path: this.toPath(key),
         ref: this.ref,
       });
       return !Array.isArray(data) && data.type === "file";
@@ -210,8 +235,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   /** Keyv batch-set: writes multiple keys in a single commit (5 API calls total). */
   async setMany(values: Array<{ key: string; value: any; ttl?: number }>): Promise<void> {
     if (values.length === 0) return;
-    const entries: [string, string][] = values.map(({ key, value }) => [key, String(value)]);
-    for (const [key] of entries) this.validateKey(key);
+    for (const { key } of values) this.validatePath(this.toPath(key));
+    const entries: [string, string][] = values.map(({ key, value }) => [this.toPath(key), String(value)]);
     const message =
       entries.length === 1
         ? this.msg(entries[0]![0], entries[0]![1])
@@ -225,7 +250,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
    */
   async deleteMany(keys: string[]): Promise<boolean> {
     if (keys.length === 0) return false;
-    for (const key of keys) this.validateKey(key);
+    for (const key of keys) this.validatePath(this.toPath(key));
 
     const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
@@ -242,7 +267,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       treeData.tree.filter((i: { type?: string; path?: string }) => i.type === "blob" && i.path).map((i: { path?: string }) => i.path!)
     );
 
-    const toDelete = keys.filter((k) => existingPaths.has(k));
+    const toDelete = keys.map((k) => this.toPath(k)).filter((p) => existingPaths.has(p));
     if (toDelete.length === 0) return false;
 
     const message =
@@ -270,7 +295,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     });
 
     const allPaths = treeData.tree
-      .filter((i) => i.type === "blob" && i.path)
+      .filter((i) => i.type === "blob" && i.path &&
+        i.path.startsWith(this.prefix) && i.path.endsWith(this.suffix))
       .map((i) => i.path!);
 
     if (allPaths.length > 0) {
@@ -294,14 +320,18 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       recursive: "1",
     });
 
+    const pathPrefix = this.prefix + (prefix ?? "");
     const files = treeData.tree.filter(
-      (item) => item.type === "blob" && item.path && (!prefix || item.path.startsWith(prefix))
+      (item) => item.type === "blob" && item.path &&
+        item.path.startsWith(pathPrefix) && item.path.endsWith(this.suffix)
     );
 
     for (const file of files) {
       if (file.path) {
-        const value = await this.get<Value>(file.path);
-        if (value !== undefined) yield [file.path, value as Value];
+        const key = this.fromPath(file.path);
+        if (key === null || key === "") continue;
+        const value = await this.get<Value>(key);
+        if (value !== undefined) yield [key, value as Value];
       }
     }
   }
