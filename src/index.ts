@@ -2,6 +2,10 @@ import { EventEmitter } from "events";
 import { Octokit } from "octokit";
 import type { KeyvStoreAdapter, StoredData } from "keyv";
 
+export interface KeyvGithubOpts {
+  url: string;
+}
+
 export interface KeyvGithubOptions {
   branch?: string;
   client?: Octokit | Octokit["rest"];
@@ -18,7 +22,7 @@ export interface KeyvGithubOptions {
  * Example: new KeyvGithub("https://github.com/owner/repo/tree/main", { client })
  */
 export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
-  opts: any;
+  opts: KeyvGithubOpts;
   namespace?: string;
 
   readonly owner: string;
@@ -29,16 +33,16 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
 
-  constructor(repoUrl: string, options: KeyvGithubOptions = {}) {
+  constructor(url: string, options: KeyvGithubOptions = {}) {
     super();
     // github.com prefix is optional: "owner/repo/tree/branch" works too
     // RegExp string avoids native-TS-preview parser issues with char classes containing ? or #
-    const match = repoUrl.match(new RegExp("(?:.*github\\.com[/:])?([^/:]+)/([^/]+?)(?:\\.git)?(?:/tree/([^?#]+))?(?:[?#].*)?$"));
-    if (!match) throw new Error(`Invalid GitHub repo URL: ${repoUrl}`);
+    const match = url.match(new RegExp("(?:.*github\\.com[/:])?([^/:]+)/([^/]+?)(?:\\.git)?(?:/tree/([^?#]+))?(?:[?#].*)?$"));
+    if (!match) throw new Error(`Invalid GitHub repo URL: ${url}`);
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
-    this.opts = { url: repoUrl };
+    this.opts = { url };
     this.client = options.client instanceof Octokit ? options.client : options.client ?? new Octokit();
     this.rest = this.client.rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
