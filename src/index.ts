@@ -2,7 +2,9 @@ import { Octokit } from "octokit";
 
 export interface KeyvGithubOptions {
   branch?: string;
-  client?: Octokit;
+  client?: Octokit | Octokit["rest"];
+  /** Customize the commit message. value is null for deletes. */
+  msg?: (key: string, value: string | null) => string;
 }
 
 /**
@@ -15,7 +17,9 @@ export default class KeyvGithub {
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
-  private client: Octokit;
+  client: Octokit;
+  rest: Octokit["rest"];
+  private msg: (key: string, value: string | null) => string;
 
   constructor(repoUrl: string, options: KeyvGithubOptions = {}) {
     // github.com prefix is optional: "owner/repo/tree/branch" works too
@@ -25,7 +29,9 @@ export default class KeyvGithub {
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
-    this.client = options.client ?? new Octokit();
+    this.client = options.client instanceof Octokit ? options.client : options.client ??new Octokit();
+    this.rest = this.client.rest; // for easier access in methods
+    this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
   }
 
   private validateKey(key: string): void {
@@ -74,7 +80,7 @@ export default class KeyvGithub {
       owner: this.owner,
       repo: this.repo,
       path: key,
-      message: sha ? `update ${key}` : `create ${key}`,
+      message: this.msg(key, value),
       content: Buffer.from(value).toString("base64"),
       sha,
       branch: this.branch,
@@ -95,7 +101,7 @@ export default class KeyvGithub {
         owner: this.owner,
         repo: this.repo,
         path: key,
-        message: `delete ${key}`,
+        message: this.msg(key, null),
         sha: data.sha,
         branch: this.branch,
       });

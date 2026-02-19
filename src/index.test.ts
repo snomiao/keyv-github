@@ -8,6 +8,7 @@ type FileRecord = { content: string; sha: string };
 function makeMockClient(files: Map<string, FileRecord> = new Map()) {
   let shaCounter = 0;
   const nextSha = () => `sha${++shaCounter}`;
+  const messages: string[] = [];
 
   const getContent = async ({ path, ref: _ref }: { path: string; ref?: string }) => {
     const file = files.get(path);
@@ -30,6 +31,7 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
   const createOrUpdateFileContents = async ({
     path,
     content,
+    message,
     sha: existingSha,
   }: {
     path: string;
@@ -38,6 +40,7 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     sha?: string;
     branch?: string;
   }) => {
+    messages.push(message);
     const decoded = Buffer.from(content, "base64").toString("utf-8");
     const sha = existingSha ?? nextSha();
     files.set(path, { content: decoded, sha });
@@ -46,6 +49,7 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
 
   const deleteFile = async ({
     path,
+    message,
     sha,
   }: {
     path: string;
@@ -53,6 +57,7 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     sha: string;
     branch?: string;
   }) => {
+    messages.push(message);
     const file = files.get(path);
     if (!file || file.sha !== sha) {
       const err: any = new Error("Not Found");
@@ -74,21 +79,23 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     return { data: { tree: blobs, truncated: false } };
   };
 
-  return {
+  const mock = {
     rest: {
       repos: { getContent, createOrUpdateFileContents, deleteFile },
       git: { getRef, getTree },
     },
+    messages,
   } as any;
+  return mock;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function makeStore(files?: Map<string, FileRecord>) {
+function makeStore(files?: Map<string, FileRecord>, options?: Parameters<typeof KeyvGithub.prototype.constructor>[1]) {
   const mockFiles = files ?? new Map<string, FileRecord>();
   const client = makeMockClient(mockFiles);
-  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client });
-  return { store, mockFiles };
+  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client, ...options });
+  return { store, mockFiles, messages: client.messages as string[] };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -294,6 +301,40 @@ describe("iterator", () => {
     }
     expect(results.length).toBe(2);
     expect(results.every(([k]) => k.startsWith("ns/"))).toBe(true);
+  });
+});
+
+describe("msg hook", () => {
+  test("custom msg is called with key and value on set", async () => {
+    const calls: [string, string | null][] = [];
+    const { store, messages } = makeStore(undefined, {
+      msg: (key, value) => { calls.push([key, value]); return `chore: put ${key}`; },
+    });
+    await store.set("notes/foo", "bar");
+    expect(calls).toEqual([["notes/foo", "bar"]]);
+    expect(messages[messages.length - 1]).toBe("chore: put notes/foo");
+  });
+
+  test("custom msg is called with key and null on delete", async () => {
+    const calls: [string, string | null][] = [];
+    const files = new Map([["to/remove", { content: "v", sha: "s1" }]]);
+    const { store, messages } = makeStore(files, {
+      msg: (key, value) => { calls.push([key, value]); return `chore: rm ${key}`; },
+    });
+    await store.delete("to/remove");
+    expect(calls).toEqual([["to/remove", null]]);
+    expect(messages[messages.length - 1]).toBe("chore: rm to/remove");
+  });
+
+  test("default msg falls back to 'update <key>' / 'delete <key>'", async () => {
+    const { store, messages } = makeStore();
+    await store.set("k", "v");
+    expect(messages[messages.length - 1]).toBe("update k");
+
+    const files2 = new Map([["k2", { content: "v", sha: "s1" }]]);
+    const { store: store2, messages: messages2 } = makeStore(files2);
+    await store2.delete("k2");
+    expect(messages2[messages2.length - 1]).toBe("delete k2");
   });
 });
 
