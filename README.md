@@ -50,6 +50,12 @@ new KeyvGithub(repoUrl, options?)
 | `branch` | `string` | parsed from URL or `"main"` | Target branch |
 | `client` | `Octokit` | `new Octokit()` | Authenticated Octokit instance |
 | `msg` | `(key, value) => string` | `"update <key>"` / `"delete <key>"` | Customize commit messages; `value` is `null` for deletes |
+| `prefix` | `string` | `""` | Path prefix prepended to every key (e.g. `"data/"`) |
+| `suffix` | `string` | `""` | Path suffix appended to every key (e.g. `".json"`) |
+
+### TTL
+
+TTL is **not enforced at the adapter level** — GitHub has no native file expiry. If you pass a `ttl` to `new Keyv({ store, ttl })`, Keyv handles it by wrapping values as `{"value":…,"expires":…}` and filtering on read. Expired files remain in the repo as inert files until overwritten or deleted. This adapter is best suited for long-lived or permanent storage.
 
 ### URL formats accepted
 
@@ -83,6 +89,17 @@ Keys must be valid relative file paths:
 - No null bytes
 
 Invalid keys throw synchronously before any API request.
+
+## See Also
+
+Other Keyv storage adapters by the same author:
+
+- [keyv-sqlite](https://github.com/snomiao/keyv-sqlite) — SQLite storage adapter
+- [keyv-mongodb-store](https://github.com/snomiao/keyv-mongodb-store) — MongoDB storage adapter
+- [keyv-nedb-store](https://github.com/snomiao/keyv-nedb-store) — NeDB embedded file-based adapter
+- [keyv-dir-store](https://github.com/snomiao/keyv-dir-store) — file-per-key directory adapter with TTL via mtime
+- [keyv-cache-proxy](https://github.com/snomiao/keyv-cache-proxy) — transparent caching proxy that wraps any object
+- [keyv-nest](https://github.com/snomiao/keyv-nest) — hierarchical multi-layer caching adapter
 
 ## License
 
