@@ -28,7 +28,18 @@ export default class KeyvGithub {
     this.client = options.client ?? new Octokit();
   }
 
+  private validateKey(key: string): void {
+    if (!key) throw new Error("Key must not be empty");
+    if (key.startsWith("/")) throw new Error(`Key must not start with '/': ${key}`);
+    if (key.endsWith("/")) throw new Error(`Key must not end with '/': ${key}`);
+    if (key.includes("//")) throw new Error(`Key must not contain '//': ${key}`);
+    if (key.includes("\0")) throw new Error(`Key must not contain null bytes: ${key}`);
+    if (key.split("/").some((seg) => seg === ".." || seg === "."))
+      throw new Error(`Key must not contain '.' or '..' segments: ${key}`);
+  }
+
   async get(key: string): Promise<string | undefined> {
+    this.validateKey(key);
     try {
       const { data } = await this.client.rest.repos.getContent({
         owner: this.owner,
@@ -45,6 +56,7 @@ export default class KeyvGithub {
   }
 
   async set(key: string, value: string): Promise<void> {
+    this.validateKey(key);
     let sha: string | undefined;
     try {
       const { data } = await this.client.rest.repos.getContent({
@@ -70,6 +82,7 @@ export default class KeyvGithub {
   }
 
   async delete(key: string): Promise<boolean> {
+    this.validateKey(key);
     try {
       const { data } = await this.client.rest.repos.getContent({
         owner: this.owner,
@@ -94,6 +107,7 @@ export default class KeyvGithub {
   }
 
   async has(key: string): Promise<boolean> {
+    this.validateKey(key);
     try {
       const { data } = await this.client.rest.repos.getContent({
         owner: this.owner,

@@ -155,6 +155,36 @@ describe("KeyvGithub constructor", () => {
   });
 });
 
+describe("key validation", () => {
+  const cases: [string, string][] = [
+    ["", "empty"],
+    ["/absolute", "start with '/'"],
+    ["trailing/", "end with '/'"],
+    ["double//slash", "contain '//'"],
+    ["../escape", "'..' segment"],
+    ["a/./b", "'.' segment"],
+    ["null\0byte", "null bytes"],
+  ];
+
+  for (const [bad] of cases) {
+    test(`throws for ${JSON.stringify(bad)}`, async () => {
+      const { store } = makeStore();
+      expect(store.get(bad)).rejects.toThrow();
+      expect(store.set(bad, "v")).rejects.toThrow();
+      expect(store.delete(bad)).rejects.toThrow();
+      expect(store.has(bad)).rejects.toThrow();
+    });
+  }
+
+  test("accepts valid paths", async () => {
+    const { store } = makeStore();
+    const validPaths = ["simple", "data/file.txt", "a/b/c/d.json", "deep/nested/path"];
+    for (const path of validPaths) {
+      expect(await store.get(path)).toBeUndefined();
+    }
+  });
+});
+
 describe("get", () => {
   test("returns undefined for missing key", async () => {
     const { store } = makeStore();
