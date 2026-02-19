@@ -24,7 +24,9 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
 
   readonly owner: string;
   readonly repo: string;
-  readonly branch: string;
+  readonly ref: string;
+  /** Alias for {@link ref}. */
+  get branch(): string { return this.ref; }
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
@@ -37,7 +39,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (!match) throw new Error(`Invalid GitHub repo URL: ${url}`);
     this.owner = match[1]!;
     this.repo = match[2]!;
-    this.branch = options.branch ?? match[3] ?? "main";
+    this.ref = options.branch ?? match[3] ?? "main";
     this.opts = { url, ...options };
     this.rest = options.client instanceof Octokit ? options.client.rest : options.client ?? new Octokit().rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
@@ -65,7 +67,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         owner: this.owner,
         repo: this.repo,
         path: key,
-        ref: this.branch,
+        ref: this.ref,
       });
       if (Array.isArray(data) || data.type !== "file") return undefined;
       return Buffer.from(data.content, "base64").toString("utf-8") as StoredData<Value>;
@@ -83,7 +85,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         owner: this.owner,
         repo: this.repo,
         path: key,
-        ref: this.branch,
+        ref: this.ref,
       });
       if (!Array.isArray(data) && data.type === "file") sha = data.sha;
     } catch (e: unknown) {
@@ -97,7 +99,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       message: this.msg(key, value),
       content: Buffer.from(String(value)).toString("base64"),
       sha,
-      branch: this.branch,
+      branch: this.ref,
     });
   }
 
@@ -108,7 +110,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         owner: this.owner,
         repo: this.repo,
         path: key,
-        ref: this.branch,
+        ref: this.ref,
       });
       if (Array.isArray(data) || data.type !== "file") return false;
       await this.rest.repos.deleteFile({
@@ -117,7 +119,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         path: key,
         message: this.msg(key, null),
         sha: data.sha,
-        branch: this.branch,
+        branch: this.ref,
       });
       return true;
     } catch (e: unknown) {
@@ -133,7 +135,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         owner: this.owner,
         repo: this.repo,
         path: key,
-        ref: this.branch,
+        ref: this.ref,
       });
       return !Array.isArray(data) && data.type === "file";
     } catch (e: unknown) {
@@ -157,7 +159,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.ref}`,
     });
     const headSha = refData.object.sha;
 
@@ -200,7 +202,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     await this.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.ref}`,
       sha: newCommit.sha,
     });
   }
@@ -228,7 +230,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.ref}`,
     });
     const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
@@ -258,7 +260,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.ref}`,
     });
     const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
@@ -283,7 +285,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.ref}`,
     });
     const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
