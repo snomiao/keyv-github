@@ -18,7 +18,7 @@ export interface KeyvGithubOptions {
  * Example: new KeyvGithub("https://github.com/owner/repo/tree/main", { client })
  */
 export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
-  opts: any = { url: "" };
+  opts: any;
   namespace?: string;
 
   readonly owner: string;
@@ -38,6 +38,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
+    this.opts = { url: repoUrl };
     this.client = options.client instanceof Octokit ? options.client : options.client ?? new Octokit();
     this.rest = this.client.rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
