@@ -61,7 +61,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   async get<Value>(key: string): Promise<StoredData<Value> | undefined> {
     this.validateKey(key);
     try {
-      const { data } = await this.client.rest.repos.getContent({
+      const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path: key,
@@ -79,7 +79,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.validateKey(key);
     let sha: string | undefined;
     try {
-      const { data } = await this.client.rest.repos.getContent({
+      const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path: key,
@@ -90,7 +90,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       if (!KeyvGithub.isHttpError(e) || e.status !== 404) throw e;
     }
 
-    await this.client.rest.repos.createOrUpdateFileContents({
+    await this.rest.repos.createOrUpdateFileContents({
       owner: this.owner,
       repo: this.repo,
       path: key,
@@ -104,14 +104,14 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   async delete(key: string): Promise<boolean> {
     this.validateKey(key);
     try {
-      const { data } = await this.client.rest.repos.getContent({
+      const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path: key,
         ref: this.branch,
       });
       if (Array.isArray(data) || data.type !== "file") return false;
-      await this.client.rest.repos.deleteFile({
+      await this.rest.repos.deleteFile({
         owner: this.owner,
         repo: this.repo,
         path: key,
@@ -129,7 +129,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   async has(key: string): Promise<boolean> {
     this.validateKey(key);
     try {
-      const { data } = await this.client.rest.repos.getContent({
+      const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path: key,
@@ -154,14 +154,14 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }): Promise<void> {
     const { set = [], delete: del = [], message } = params;
 
-    const { data: refData } = await this.client.rest.git.getRef({
+    const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
     });
     const headSha = refData.object.sha;
 
-    const { data: commitData } = await this.client.rest.git.getCommit({
+    const { data: commitData } = await this.rest.git.getCommit({
       owner: this.owner,
       repo: this.repo,
       commit_sha: headSha,
@@ -182,14 +182,14 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       })),
     ];
 
-    const { data: newTree } = await this.client.rest.git.createTree({
+    const { data: newTree } = await this.rest.git.createTree({
       owner: this.owner,
       repo: this.repo,
       base_tree: commitData.tree.sha,
       tree: treeEntries,
     });
 
-    const { data: newCommit } = await this.client.rest.git.createCommit({
+    const { data: newCommit } = await this.rest.git.createCommit({
       owner: this.owner,
       repo: this.repo,
       message,
@@ -197,7 +197,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       parents: [headSha],
     });
 
-    await this.client.rest.git.updateRef({
+    await this.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
@@ -225,19 +225,19 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (keys.length === 0) return false;
     for (const key of keys) this.validateKey(key);
 
-    const { data: refData } = await this.client.rest.git.getRef({
+    const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
     });
-    const { data: treeData } = await this.client.rest.git.getTree({
+    const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
       repo: this.repo,
       tree_sha: refData.object.sha,
       recursive: "1",
     });
     const existingPaths = new Set(
-      treeData.tree.filter((i) => i.type === "blob" && i.path).map((i) => i.path!)
+      treeData.tree.filter((i: { type?: string; path?: string }) => i.type === "blob" && i.path).map((i: { path?: string }) => i.path!)
     );
 
     const toDelete = keys.filter((k) => existingPaths.has(k));
@@ -255,12 +255,12 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (!this.enableClear)
       throw new Error("clear() is disabled. Set enableClear: true in options to allow it.");
 
-    const { data: refData } = await this.client.rest.git.getRef({
+    const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
     });
-    const { data: treeData } = await this.client.rest.git.getTree({
+    const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
       repo: this.repo,
       tree_sha: refData.object.sha,
@@ -280,12 +280,12 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   async *iterator<Value>(prefix?: string): AsyncGenerator<[string, Value | undefined]> {
-    const { data: refData } = await this.client.rest.git.getRef({
+    const { data: refData } = await this.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
     });
-    const { data: treeData } = await this.client.rest.git.getTree({
+    const { data: treeData } = await this.rest.git.getTree({
       owner: this.owner,
       repo: this.repo,
       tree_sha: refData.object.sha,

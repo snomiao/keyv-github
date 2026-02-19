@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { Octokit } from "octokit";
-import KeyvGithub from "./index.ts";
+import KeyvGithub, { type KeyvGithubOptions } from "./index.ts";
 
 // ── Minimal mock for Octokit REST API ──────────────────────────────────────
 
@@ -115,10 +115,10 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function makeStore(files?: Map<string, FileRecord>, options?: Parameters<typeof KeyvGithub.prototype.constructor>[1]) {
+function makeStore(files?: Map<string, FileRecord>, options?: Omit<KeyvGithubOptions, "url">) {
   const mockFiles = files ?? new Map<string, FileRecord>();
   const client = makeMockClient(mockFiles);
-  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client: client as unknown as Octokit, ...options });
+  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client: client.rest as unknown as Octokit["rest"], ...(options ?? {}) });
   return { store, mockFiles, messages: client.messages };
 }
 
@@ -128,14 +128,14 @@ describe("KeyvGithub constructor", () => {
   test("parses HTTPS GitHub URL", () => {
     const client = makeMockClient();
     expect(
-      () => new KeyvGithub("https://github.com/owner/repo", { client })
+      () => new KeyvGithub("https://github.com/owner/repo", { client: client.rest as unknown as Octokit["rest"] })
     ).not.toThrow();
   });
 
   test("parses SSH-style GitHub URL", () => {
     const client = makeMockClient();
     expect(
-      () => new KeyvGithub("git@github.com:owner/repo.git", { client })
+      () => new KeyvGithub("git@github.com:owner/repo.git", { client: client.rest as unknown as Octokit["rest"] })
     ).not.toThrow();
   });
 
@@ -145,14 +145,14 @@ describe("KeyvGithub constructor", () => {
 
   test("accepts short owner/repo form without github.com prefix", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("owner/repo", { client });
+    const store = new KeyvGithub("owner/repo", { client: client.rest as unknown as Octokit["rest"] });
     expect(store.owner).toBe("owner");
     expect(store.repo).toBe("repo");
   });
 
   test("accepts short owner/repo/tree/branch form", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("owner/repo/tree/main", { client });
+    const store = new KeyvGithub("owner/repo/tree/main", { client: client.rest as unknown as Octokit["rest"] });
     expect(store.owner).toBe("owner");
     expect(store.repo).toBe("repo");
     expect(store.branch).toBe("main");
@@ -160,20 +160,20 @@ describe("KeyvGithub constructor", () => {
 
   test("parses branch from /tree/<branch> in URL", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", { client });
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", { client: client.rest as unknown as Octokit["rest"] });
     expect(store.branch).toBe("develop");
   });
 
   test("parses multi-segment branch from URL", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo/tree/feature/my-branch", { client });
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/feature/my-branch", { client: client.rest as unknown as Octokit["rest"] });
     expect(store.branch).toBe("feature/my-branch");
   });
 
   test("options.branch overrides URL branch", () => {
     const client = makeMockClient();
     const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", {
-      client,
+      client: client.rest as unknown as Octokit["rest"],
       branch: "override",
     });
     expect(store.branch).toBe("override");
@@ -181,7 +181,7 @@ describe("KeyvGithub constructor", () => {
 
   test("defaults to main when no branch in URL or options", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo", { client });
+    const store = new KeyvGithub("https://github.com/owner/repo", { client: client.rest as unknown as Octokit["rest"] });
     expect(store.branch).toBe("main");
   });
 });
@@ -225,7 +225,7 @@ describe("get", () => {
   test("returns file content for existing key", async () => {
     const files = new Map([["data/hello", { content: "world", sha: "abc" }]]);
     const { store } = makeStore(files);
-    expect(await store.get("data/hello")).toBe("world");
+    expect(await store.get<string>("data/hello")).toBe("world");
   });
 });
 
@@ -323,7 +323,7 @@ describe("setMany", () => {
 
   test("uses msg hook for single-entry batch", async () => {
     const { store, messages } = makeStore(undefined, {
-      msg: (key, value) => `custom: ${key}=${value}`,
+      msg: (key: string, value: string | null) => `custom: ${key}=${value}`,
     });
     await store.setMany([{ key: "x/y", value: "v" }]);
     expect(messages[0]).toBe("custom: x/y=v");
@@ -375,7 +375,7 @@ describe("deleteMany", () => {
   test("uses msg hook for single-key batch", async () => {
     const files = new Map([["k", { content: "v", sha: "s" }]]);
     const { store, messages } = makeStore(files, {
-      msg: (key, value) => `rm: ${key} (${value ?? "null"})`,
+      msg: (key: string, value: string | null) => `rm: ${key} (${value ?? "null"})`,
     });
     await store.deleteMany(["k"]);
     expect(messages[0]).toBe("rm: k (null)");
@@ -389,7 +389,7 @@ describe("iterator", () => {
       ["y/z", { content: "2", sha: "s2" }],
     ]);
     const { store } = makeStore(files);
-    const results: [string, string][] = [];
+    const results: [string, unknown][] = [];
     for await (const entry of store.iterator()) {
       results.push(entry);
     }
@@ -405,7 +405,7 @@ describe("iterator", () => {
       ["other/c", { content: "3", sha: "s3" }],
     ]);
     const { store } = makeStore(files);
-    const results: [string, string][] = [];
+    const results: [string, unknown][] = [];
     for await (const entry of store.iterator("ns/")) {
       results.push(entry);
     }
@@ -418,7 +418,7 @@ describe("msg hook", () => {
   test("custom msg is called with key and value on set", async () => {
     const calls: [string, string | null][] = [];
     const { store, messages } = makeStore(undefined, {
-      msg: (key, value) => { calls.push([key, value]); return `chore: put ${key}`; },
+      msg: (key: string, value: string | null) => { calls.push([key, value]); return `chore: put ${key}`; },
     });
     await store.set("notes/foo", "bar");
     expect(calls).toEqual([["notes/foo", "bar"]]);
@@ -429,7 +429,7 @@ describe("msg hook", () => {
     const calls: [string, string | null][] = [];
     const files = new Map([["to/remove", { content: "v", sha: "s1" }]]);
     const { store, messages } = makeStore(files, {
-      msg: (key, value) => { calls.push([key, value]); return `chore: rm ${key}`; },
+      msg: (key: string, value: string | null) => { calls.push([key, value]); return `chore: rm ${key}`; },
     });
     await store.delete("to/remove");
     expect(calls).toEqual([["to/remove", null]]);
