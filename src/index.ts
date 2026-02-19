@@ -5,6 +5,8 @@ export interface KeyvGithubOptions {
   client?: Octokit | Octokit["rest"];
   /** Customize the commit message. value is null for deletes. */
   msg?: (key: string, value: string | null) => string;
+  /** clear() deletes every file in the repo and is disabled by default. Set to true to allow it. */
+  enableClear?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export default class KeyvGithub {
   client: Octokit;
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
+  readonly enableClear: boolean;
 
   constructor(repoUrl: string, options: KeyvGithubOptions = {}) {
     // github.com prefix is optional: "owner/repo/tree/branch" works too
@@ -32,6 +35,7 @@ export default class KeyvGithub {
     this.client = options.client instanceof Octokit ? options.client : options.client ??new Octokit();
     this.rest = this.client.rest; // for easier access in methods
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
+    this.enableClear = options.enableClear ?? false;
   }
 
   private validateKey(key: string): void {
@@ -129,6 +133,8 @@ export default class KeyvGithub {
   }
 
   async clear(): Promise<void> {
+    if (!this.enableClear)
+      throw new Error("clear() is disabled. Set enableClear: true in options to allow it.");
     const { data: refData } = await this.client.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,

@@ -255,19 +255,29 @@ describe("has", () => {
 });
 
 describe("clear", () => {
-  test("removes all files", async () => {
+  test("throws by default (enableClear not set)", async () => {
+    const { store } = makeStore();
+    expect(store.clear()).rejects.toThrow("enableClear");
+  });
+
+  test("throws when enableClear is false", async () => {
+    const { store } = makeStore(undefined, { enableClear: false });
+    expect(store.clear()).rejects.toThrow("enableClear");
+  });
+
+  test("removes all files when enableClear is true", async () => {
     const files = new Map<string, FileRecord>([
       ["a", { content: "1", sha: "s1" }],
       ["b", { content: "2", sha: "s2" }],
       ["c/d", { content: "3", sha: "s3" }],
     ]);
-    const { store, mockFiles } = makeStore(files);
+    const { store, mockFiles } = makeStore(files, { enableClear: true });
     await store.clear();
     expect(mockFiles.size).toBe(0);
   });
 
-  test("no-op on empty store", async () => {
-    const { store } = makeStore();
+  test("no-op on empty store when enableClear is true", async () => {
+    const { store } = makeStore(undefined, { enableClear: true });
     await store.clear(); // should not throw
   });
 });
