@@ -2,11 +2,8 @@ import { EventEmitter } from "events";
 import { Octokit } from "octokit";
 import type { KeyvStoreAdapter, StoredData } from "keyv";
 
-export interface KeyvGithubOpts {
-  url: string;
-}
-
 export interface KeyvGithubOptions {
+  url: string;
   branch?: string;
   client?: Octokit | Octokit["rest"];
   /** Customize the commit message. value is null for deletes. */
@@ -22,7 +19,7 @@ export interface KeyvGithubOptions {
  * Example: new KeyvGithub("https://github.com/owner/repo/tree/main", { client })
  */
 export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
-  opts: KeyvGithubOpts;
+  opts: KeyvGithubOptions;
   namespace?: string;
 
   readonly owner: string;
@@ -33,7 +30,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
 
-  constructor(url: string, options: KeyvGithubOptions = {}) {
+  constructor(url: string, options: Omit<KeyvGithubOptions, "url"> = {}) {
     super();
     // github.com prefix is optional: "owner/repo/tree/branch" works too
     // RegExp string avoids native-TS-preview parser issues with char classes containing ? or #
@@ -42,7 +39,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.branch = options.branch ?? match[3] ?? "main";
-    this.opts = { url };
+    this.opts = { url, ...options };
     this.client = options.client instanceof Octokit ? options.client : options.client ?? new Octokit();
     this.rest = this.client.rest;
     this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
