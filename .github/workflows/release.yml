@@ -1,0 +1,43 @@
+# Release workflow
+
+# check https://www.npmjs.com/package/[package-name]/access for OIDC setup
+# 1. repo = this repo
+# 2. package-name = package to publish
+
+name: Release
+description: "Release workflow for publishing package"
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - main
+      - beta
+
+permissions:
+  id-token: write # required for OIDC
+  contents: write # read and write access to repository contents
+  issues: write  
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with: {node-version: latest} #[semantic-release]: node version >=20.8.1 is required. Found v18.20.5.
+      - uses: oven-sh/setup-bun@v2
+      - run: bun i
+      - run: bunx biofix
+      - run: bun run build
+      - run: bun run test
+      - if: github.event_name == 'push'
+        run: bunx semantic-release
+        env:
+          # reminder to setup read/write permission for this token
+          # here: REPO_URL/settings/actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
