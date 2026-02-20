@@ -45,13 +45,34 @@ await kv.delete("data/hello.txt");
 new KeyvGithub(repoUrl, options?)
 ```
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `branch` | `string` | parsed from URL or `"main"` | Target branch |
-| `client` | `Octokit` | `new Octokit()` | Authenticated Octokit instance |
-| `msg` | `(key, value) => string` | `"update <key>"` / `"delete <key>"` | Customize commit messages; `value` is `null` for deletes |
-| `prefix` | `string` | `""` | Path prefix prepended to every key (e.g. `"data/"`) |
-| `suffix` | `string` | `""` | Path suffix appended to every key (e.g. `".json"`) |
+| Option   | Type                     | Default                             | Description                                              |
+| -------- | ------------------------ | ----------------------------------- | -------------------------------------------------------- |
+| `branch` | `string`                 | parsed from URL or `"main"`         | Target branch                                            |
+| `client` | `Octokit`                | `new Octokit()`                     | Authenticated Octokit instance                           |
+| `msg`    | `(key, value) => string` | `"update <key>"` / `"delete <key>"` | Customize commit messages; `value` is `null` for deletes |
+| `prefix` | `string`                 | `""`                                | Path prefix prepended to every key (e.g. `"data/"`)      |
+| `suffix` | `string`                 | `""`                                | Path suffix appended to every key (e.g. `".json"`)       |
+
+### Store limitations
+
+When using `KeyvGithub` directly (without wrapping in `Keyv`):
+
+- **Values must be strings** — objects, arrays, and numbers will throw an error
+- **TTL is not supported** — passing a TTL parameter throws an error
+
+To store non-string values or use TTL, wrap the store with `new Keyv(store)`:
+
+```ts
+// Direct usage: strings only, no TTL
+await store.set("key", "string value"); // ✓
+await store.set("key", { obj: true });  // ✗ throws error
+await store.set("key", "value", 1000);  // ✗ throws error
+
+// With Keyv wrapper: any serializable value, TTL supported
+const kv = new Keyv({ store });
+await kv.set("key", { obj: true });     // ✓ serialized automatically
+await kv.set("key", "value", 1000);     // ✓ TTL handled by Keyv
+```
 
 ### TTL
 
@@ -72,9 +93,7 @@ owner/repo/tree/my-branch
 ```ts
 const store = new KeyvGithub("owner/repo", {
   msg: (key, value) =>
-    value === null
-      ? `chore: delete ${key}`
-      : `chore: update ${key} → ${value.slice(0, 40)}`,
+    value === null ? `chore: delete ${key}` : `chore: update ${key} → ${value.slice(0, 40)}`,
 });
 ```
 

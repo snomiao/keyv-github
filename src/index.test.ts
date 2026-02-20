@@ -1,5 +1,5 @@
-import { expect, test, describe } from "bun:test";
-import { Octokit } from "octokit";
+import { describe, expect, test } from "bun:test";
+import type { Octokit } from "octokit";
 import KeyvGithub, { type KeyvGithubOptions } from "./index.ts";
 
 // ── Minimal mock for Octokit REST API ──────────────────────────────────────
@@ -96,13 +96,24 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
     return { data: { sha: `tree-${nextSha()}` } };
   };
 
-  const createCommit = async ({ message }: { message: string; tree: string; parents: string[] }) => {
+  const createCommit = async ({
+    message,
+  }: {
+    message: string;
+    tree: string;
+    parents: string[];
+  }) => {
     messages.push(message);
     return { data: { sha: `commit-${nextSha()}` } };
   };
 
-  const updateRef = async (_: { owner: string; repo: string; ref: string; sha: string; force?: boolean }) =>
-    ({ data: {} });
+  const updateRef = async (_: {
+    owner: string;
+    repo: string;
+    ref: string;
+    sha: string;
+    force?: boolean;
+  }) => ({ data: {} });
 
   return {
     rest: {
@@ -118,7 +129,11 @@ function makeMockClient(files: Map<string, FileRecord> = new Map()) {
 function makeStore(files?: Map<string, FileRecord>, options?: Omit<KeyvGithubOptions, "url">) {
   const mockFiles = files ?? new Map<string, FileRecord>();
   const client = makeMockClient(mockFiles);
-  const store = new KeyvGithub("https://github.com/owner/repo", { branch: "main", client: client.rest as unknown as Octokit["rest"], ...(options ?? {}) });
+  const store = new KeyvGithub("https://github.com/owner/repo", {
+    branch: "main",
+    client: client.rest as unknown as Octokit["rest"],
+    ...(options ?? {}),
+  });
   return { store, mockFiles, messages: client.messages };
 }
 
@@ -128,14 +143,20 @@ describe("KeyvGithub constructor", () => {
   test("parses HTTPS GitHub URL", () => {
     const client = makeMockClient();
     expect(
-      () => new KeyvGithub("https://github.com/owner/repo", { client: client.rest as unknown as Octokit["rest"] })
+      () =>
+        new KeyvGithub("https://github.com/owner/repo", {
+          client: client.rest as unknown as Octokit["rest"],
+        }),
     ).not.toThrow();
   });
 
   test("parses SSH-style GitHub URL", () => {
     const client = makeMockClient();
     expect(
-      () => new KeyvGithub("git@github.com:owner/repo.git", { client: client.rest as unknown as Octokit["rest"] })
+      () =>
+        new KeyvGithub("git@github.com:owner/repo.git", {
+          client: client.rest as unknown as Octokit["rest"],
+        }),
     ).not.toThrow();
   });
 
@@ -145,14 +166,18 @@ describe("KeyvGithub constructor", () => {
 
   test("accepts short owner/repo form without github.com prefix", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("owner/repo", { client: client.rest as unknown as Octokit["rest"] });
+    const store = new KeyvGithub("owner/repo", {
+      client: client.rest as unknown as Octokit["rest"],
+    });
     expect(store.owner).toBe("owner");
     expect(store.repo).toBe("repo");
   });
 
   test("accepts short owner/repo/tree/branch form", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("owner/repo/tree/main", { client: client.rest as unknown as Octokit["rest"] });
+    const store = new KeyvGithub("owner/repo/tree/main", {
+      client: client.rest as unknown as Octokit["rest"],
+    });
     expect(store.owner).toBe("owner");
     expect(store.repo).toBe("repo");
     expect(store.branch).toBe("main");
@@ -160,13 +185,17 @@ describe("KeyvGithub constructor", () => {
 
   test("parses branch from /tree/<branch> in URL", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", { client: client.rest as unknown as Octokit["rest"] });
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/develop", {
+      client: client.rest as unknown as Octokit["rest"],
+    });
     expect(store.branch).toBe("develop");
   });
 
   test("parses multi-segment branch from URL", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo/tree/feature/my-branch", { client: client.rest as unknown as Octokit["rest"] });
+    const store = new KeyvGithub("https://github.com/owner/repo/tree/feature/my-branch", {
+      client: client.rest as unknown as Octokit["rest"],
+    });
     expect(store.branch).toBe("feature/my-branch");
   });
 
@@ -181,7 +210,9 @@ describe("KeyvGithub constructor", () => {
 
   test("defaults to main when no branch in URL or options", () => {
     const client = makeMockClient();
-    const store = new KeyvGithub("https://github.com/owner/repo", { client: client.rest as unknown as Octokit["rest"] });
+    const store = new KeyvGithub("https://github.com/owner/repo", {
+      client: client.rest as unknown as Octokit["rest"],
+    });
     expect(store.branch).toBe("main");
   });
 });
@@ -247,6 +278,18 @@ describe("set", () => {
     const { store, mockFiles } = makeStore();
     await store.set("unicode", "日本語テスト 🎉");
     expect(mockFiles.get("unicode")?.content).toBe("日本語テスト 🎉");
+  });
+
+  test("throws when TTL is provided (not supported natively)", async () => {
+    const { store } = makeStore();
+    expect(store.set("key", "value", 1000)).rejects.toThrow("TTL is not supported natively");
+  });
+
+  test("throws when value is not a string", async () => {
+    const { store } = makeStore();
+    expect(store.set("key", { obj: true })).rejects.toThrow("only supports string values");
+    expect(store.set("key", 123)).rejects.toThrow("only supports string values");
+    expect(store.set("key", ["array"])).rejects.toThrow("only supports string values");
   });
 });
 
@@ -337,7 +380,23 @@ describe("setMany", () => {
 
   test("validates all keys before writing", async () => {
     const { store, mockFiles } = makeStore();
-    expect(store.setMany([{ key: "good/key", value: "v" }, { key: "../bad", value: "v" }])).rejects.toThrow();
+    expect(
+      store.setMany([
+        { key: "good/key", value: "v" },
+        { key: "../bad", value: "v" },
+      ]),
+    ).rejects.toThrow();
+    expect(mockFiles.size).toBe(0);
+  });
+
+  test("throws when any value is not a string", async () => {
+    const { store, mockFiles } = makeStore();
+    expect(
+      store.setMany([
+        { key: "a", value: "ok" },
+        { key: "b", value: { obj: true } },
+      ]),
+    ).rejects.toThrow("only supports string values");
     expect(mockFiles.size).toBe(0);
   });
 });
@@ -418,7 +477,10 @@ describe("msg hook", () => {
   test("custom msg is called with key and value on set", async () => {
     const calls: [string, string | null][] = [];
     const { store, messages } = makeStore(undefined, {
-      msg: (key: string, value: string | null) => { calls.push([key, value]); return `chore: put ${key}`; },
+      msg: (key: string, value: string | null) => {
+        calls.push([key, value]);
+        return `chore: put ${key}`;
+      },
     });
     await store.set("notes/foo", "bar");
     expect(calls).toEqual([["notes/foo", "bar"]]);
@@ -429,7 +491,10 @@ describe("msg hook", () => {
     const calls: [string, string | null][] = [];
     const files = new Map([["to/remove", { content: "v", sha: "s1" }]]);
     const { store, messages } = makeStore(files, {
-      msg: (key: string, value: string | null) => { calls.push([key, value]); return `chore: rm ${key}`; },
+      msg: (key: string, value: string | null) => {
+        calls.push([key, value]);
+        return `chore: rm ${key}`;
+      },
     });
     await store.delete("to/remove");
     expect(calls).toEqual([["to/remove", null]]);
@@ -456,7 +521,10 @@ describe("prefix and suffix options", () => {
   });
 
   test("set writes to prefix+key+suffix path", async () => {
-    const { store, mockFiles } = makeStore(undefined, { prefix: "data/", suffix: ".json" });
+    const { store, mockFiles } = makeStore(undefined, {
+      prefix: "data/",
+      suffix: ".json",
+    });
     await store.set("foo", "bar");
     expect(mockFiles.get("data/foo.json")?.content).toBe("bar");
     expect(mockFiles.has("foo")).toBe(false);
@@ -464,7 +532,10 @@ describe("prefix and suffix options", () => {
 
   test("delete removes prefix+key+suffix path", async () => {
     const files = new Map([["data/foo.json", { content: "v", sha: "s1" }]]);
-    const { store, mockFiles } = makeStore(files, { prefix: "data/", suffix: ".json" });
+    const { store, mockFiles } = makeStore(files, {
+      prefix: "data/",
+      suffix: ".json",
+    });
     const result = await store.delete("foo");
     expect(result).toBe(true);
     expect(mockFiles.has("data/foo.json")).toBe(false);
@@ -482,7 +553,7 @@ describe("prefix and suffix options", () => {
       ["data/a.json", { content: "1", sha: "s1" }],
       ["data/b.json", { content: "2", sha: "s2" }],
       ["other/c.json", { content: "3", sha: "s3" }],
-      ["data/d.txt",  { content: "4", sha: "s4" }],
+      ["data/d.txt", { content: "4", sha: "s4" }],
     ]);
     const { store } = makeStore(files, { prefix: "data/", suffix: ".json" });
     const results: [string, unknown][] = [];
@@ -499,7 +570,11 @@ describe("prefix and suffix options", () => {
       ["data/a.json", { content: "1", sha: "s1" }],
       ["other/b.txt", { content: "2", sha: "s2" }],
     ]);
-    const { store, mockFiles } = makeStore(files, { prefix: "data/", suffix: ".json", enableClear: true });
+    const { store, mockFiles } = makeStore(files, {
+      prefix: "data/",
+      suffix: ".json",
+      enableClear: true,
+    });
     await store.clear();
     expect(mockFiles.has("data/a.json")).toBe(false);
     expect(mockFiles.has("other/b.txt")).toBe(true);
@@ -519,9 +594,9 @@ describe("integration with Keyv", () => {
     const keyv = new Keyv({ store });
 
     await keyv.set("greeting", "hello");
-    expect(await keyv.get("greeting") as unknown).toBe("hello");
+    expect((await keyv.get("greeting")) as unknown).toBe("hello");
 
     await keyv.delete("greeting");
-    expect(await keyv.get("greeting") as unknown).toBe(undefined);
+    expect((await keyv.get("greeting")) as unknown).toBe(undefined);
   });
 });

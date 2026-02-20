@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
-import { Octokit } from "octokit";
 import type { KeyvStoreAdapter, StoredData } from "keyv";
+import { Octokit } from "octokit";
 
 export interface KeyvGithubOptions {
   url: string;
@@ -30,7 +30,9 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   readonly repo: string;
   readonly ref: string;
   /** Alias for {@link ref}. */
-  get branch(): string { return this.ref; }
+  get branch(): string {
+    return this.ref;
+  }
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
   readonly enableClear: boolean;
@@ -41,14 +43,20 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     super();
     // github.com prefix is optional: "owner/repo/tree/branch" works too
     // RegExp string avoids native-TS-preview parser issues with char classes containing ? or #
-    const match = url.match(new RegExp("(?:.*github\\.com[/:])?([^/:]+)/([^/]+?)(?:\\.git)?(?:/tree/([^?#]+))?(?:[?#].*)?$"));
+    const match = url.match(
+      /(?:.*github\.com[/:])?([^/:]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^?#]+))?(?:[?#].*)?$/,
+    );
     if (!match) throw new Error(`Invalid GitHub repo URL: ${url}`);
     this.owner = match[1]!;
     this.repo = match[2]!;
     this.ref = options.branch ?? match[3] ?? "main";
     this.opts = { url, ...options };
-    this.rest = options.client instanceof Octokit ? options.client.rest : options.client ?? new Octokit().rest;
-    this.msg = options.msg ?? ((key, value) => value === null ? `delete ${key}` : `update ${key}`);
+    this.rest =
+      options.client instanceof Octokit
+        ? options.client.rest
+        : (options.client ?? new Octokit().rest);
+    this.msg =
+      options.msg ?? ((key, value) => (value === null ? `delete ${key}` : `update ${key}`));
     this.enableClear = options.enableClear ?? false;
     this.prefix = options.prefix ?? "";
     this.suffix = options.suffix ?? "";
@@ -70,7 +78,12 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   private static isHttpError(e: unknown): e is { status: number } {
-    return typeof e === "object" && e !== null && "status" in e && typeof (e as Record<string, unknown>).status === "number";
+    return (
+      typeof e === "object" &&
+      e !== null &&
+      "status" in e &&
+      typeof (e as Record<string, unknown>).status === "number"
+    );
   }
 
   private validatePath(path: string): void {
@@ -100,7 +113,19 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     }
   }
 
-  async set(key: string, value: any, _ttl?: number): Promise<void> {
+  async set(key: string, value: any, ttl?: number): Promise<void> {
+    if (ttl !== undefined) {
+      throw new Error(
+        "TTL is not supported natively by keyv-github. " +
+          "Use new Keyv(store) which handles TTL via value expiration metadata.",
+      );
+    }
+    if (typeof value !== "string") {
+      throw new Error(
+        "keyv-github only supports string values natively. " +
+          "Use new Keyv(store) which serializes values automatically.",
+      );
+    }
     this.validatePath(this.toPath(key));
     const path = this.toPath(key);
     let sha: string | undefined;
@@ -233,10 +258,21 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   /** Keyv batch-set: writes multiple keys in a single commit (5 API calls total). */
-  async setMany(values: Array<{ key: string; value: any; ttl?: number }>): Promise<void> {
+  async setMany(values: Array<{ key: string; value: any }>): Promise<void> {
     if (values.length === 0) return;
-    for (const { key } of values) this.validatePath(this.toPath(key));
-    const entries: [string, string][] = values.map(({ key, value }) => [this.toPath(key), String(value)]);
+    for (const { key, value } of values) {
+      if (typeof value !== "string") {
+        throw new Error(
+          "keyv-github only supports string values natively. " +
+            "Use new Keyv(store) which serializes values automatically.",
+        );
+      }
+      this.validatePath(this.toPath(key));
+    }
+    const entries: [string, string][] = values.map(({ key, value }) => [
+      this.toPath(key),
+      String(value),
+    ]);
     const message =
       entries.length === 1
         ? this.msg(entries[0]![0], entries[0]![1])
@@ -264,7 +300,9 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       recursive: "1",
     });
     const existingPaths = new Set(
-      treeData.tree.filter((i: { type?: string; path?: string }) => i.type === "blob" && i.path).map((i: { path?: string }) => i.path!)
+      treeData.tree
+        .filter((i: { type?: string; path?: string }) => i.type === "blob" && i.path)
+        .map((i: { path?: string }) => i.path!),
     );
 
     const toDelete = keys.map((k) => this.toPath(k)).filter((p) => existingPaths.has(p));
@@ -295,8 +333,13 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     });
 
     const allPaths = treeData.tree
-      .filter((i) => i.type === "blob" && i.path &&
-        i.path.startsWith(this.prefix) && i.path.endsWith(this.suffix))
+      .filter(
+        (i) =>
+          i.type === "blob" &&
+          i.path &&
+          i.path.startsWith(this.prefix) &&
+          i.path.endsWith(this.suffix),
+      )
       .map((i) => i.path!);
 
     if (allPaths.length > 0) {
@@ -322,8 +365,11 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
 
     const pathPrefix = this.prefix + (prefix ?? "");
     const files = treeData.tree.filter(
-      (item) => item.type === "blob" && item.path &&
-        item.path.startsWith(pathPrefix) && item.path.endsWith(this.suffix)
+      (item) =>
+        item.type === "blob" &&
+        item.path &&
+        item.path.startsWith(pathPrefix) &&
+        item.path.endsWith(this.suffix),
     );
 
     for (const file of files) {
