@@ -2,6 +2,12 @@ import { EventEmitter } from "events";
 import type { KeyvStoreAdapter, StoredData } from "keyv";
 import { Octokit } from "octokit";
 
+/** Minimal Map-like interface for SHA caching. */
+export interface ShaMap {
+  get(key: string): string | null | undefined;
+  set(key: string, value: string | null): void;
+}
+
 export interface KeyvGithubOptions {
   url: string;
   branch?: string;
@@ -14,6 +20,8 @@ export interface KeyvGithubOptions {
   prefix?: string;
   /** Path suffix appended to every key (e.g. '.json'). Defaults to ''. */
   suffix?: string;
+  /** SHA cache map. Defaults to new Map(). Pass any keyv-like object with get/set. */
+  shaMap?: ShaMap;
 }
 
 /**
@@ -38,6 +46,8 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   readonly enableClear: boolean;
   readonly prefix: string;
   readonly suffix: string;
+  /** SHA cache: key → sha (string), null (file doesn't exist), undefined (unknown). */
+  readonly shaMap: ShaMap;
 
   constructor(url: string, options: Omit<KeyvGithubOptions, "url"> = {}) {
     super();
@@ -60,6 +70,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     this.enableClear = options.enableClear ?? false;
     this.prefix = options.prefix ?? "";
     this.suffix = options.suffix ?? "";
+    this.shaMap = options.shaMap ?? new Map<string, string | null>();
   }
 
   /** Converts a user key to the GitHub file path. */
@@ -97,18 +108,26 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
 
   async get<Value>(key: string): Promise<StoredData<Value> | undefined> {
-    this.validatePath(this.toPath(key));
+    const path = this.toPath(key);
+    this.validatePath(path);
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: this.toPath(key),
+        path,
         ref: this.ref,
       });
-      if (Array.isArray(data) || data.type !== "file") return undefined;
+      if (Array.isArray(data) || data.type !== "file") {
+        this.shaMap.set(path, null);
+        return undefined;
+      }
+      this.shaMap.set(path, data.sha);
       return Buffer.from(data.content, "base64").toString("utf-8") as StoredData<Value>;
     } catch (e: unknown) {
-      if (KeyvGithub.isHttpError(e) && e.status === 404) return undefined;
+      if (KeyvGithub.isHttpError(e) && e.status === 404) {
+        this.shaMap.set(path, null);
+        return undefined;
+      }
       throw e;
     }
   }
@@ -126,22 +145,19 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
           "Use new Keyv(store) which serializes values automatically.",
       );
     }
-    this.validatePath(this.toPath(key));
     const path = this.toPath(key);
-    let sha: string | undefined;
-    try {
-      const { data } = await this.rest.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
-        path,
-        ref: this.ref,
-      });
-      if (!Array.isArray(data) && data.type === "file") sha = data.sha;
-    } catch (e: unknown) {
-      if (!KeyvGithub.isHttpError(e) || e.status !== 404) throw e;
-    }
+    this.validatePath(path);
 
-    await this.rest.repos.createOrUpdateFileContents({
+    // Check shaMap first; if unknown (undefined), fetch to populate it
+    let cachedSha = this.shaMap.get(path);
+    if (cachedSha === undefined) {
+      await this.get(key); // populates shaMap
+      cachedSha = this.shaMap.get(path);
+    }
+    // cachedSha is now string (existing file) or null (doesn't exist)
+    const sha = cachedSha ?? undefined;
+
+    const { data } = await this.rest.repos.createOrUpdateFileContents({
       owner: this.owner,
       repo: this.repo,
       path,
@@ -150,46 +166,65 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       sha,
       branch: this.ref,
     });
+    // Update shaMap with new sha from response
+    this.shaMap.set(path, data.content?.sha ?? null);
   }
 
   async delete(key: string): Promise<boolean> {
-    this.validatePath(this.toPath(key));
     const path = this.toPath(key);
+    this.validatePath(path);
+
+    // Check shaMap first; if unknown (undefined), fetch to populate it
+    let cachedSha = this.shaMap.get(path);
+    if (cachedSha === undefined) {
+      await this.get(key); // populates shaMap
+      cachedSha = this.shaMap.get(path);
+    }
+    // If null or still undefined, file doesn't exist
+    if (!cachedSha) return false;
+
+    const sha = cachedSha; // narrow to string for TypeScript
     try {
-      const { data } = await this.rest.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
-        path,
-        ref: this.ref,
-      });
-      if (Array.isArray(data) || data.type !== "file") return false;
       await this.rest.repos.deleteFile({
         owner: this.owner,
         repo: this.repo,
         path,
         message: this.msg(path, null),
-        sha: data.sha,
+        sha,
         branch: this.ref,
       });
+      this.shaMap.set(path, null);
       return true;
     } catch (e: unknown) {
-      if (KeyvGithub.isHttpError(e) && e.status === 404) return false;
+      if (KeyvGithub.isHttpError(e) && e.status === 404) {
+        this.shaMap.set(path, null);
+        return false;
+      }
       throw e;
     }
   }
 
   async has(key: string): Promise<boolean> {
-    this.validatePath(this.toPath(key));
+    const path = this.toPath(key);
+    this.validatePath(path);
     try {
       const { data } = await this.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: this.toPath(key),
+        path,
         ref: this.ref,
       });
-      return !Array.isArray(data) && data.type === "file";
+      if (Array.isArray(data) || data.type !== "file") {
+        this.shaMap.set(path, null);
+        return false;
+      }
+      this.shaMap.set(path, data.sha);
+      return true;
     } catch (e: unknown) {
-      if (KeyvGithub.isHttpError(e) && e.status === 404) return false;
+      if (KeyvGithub.isHttpError(e) && e.status === 404) {
+        this.shaMap.set(path, null);
+        return false;
+      }
       throw e;
     }
   }
