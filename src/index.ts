@@ -315,7 +315,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const message =
       entries.length === 1
         ? this.msg(entries[0]![0], entries[0]![1])
-        : `batch update ${entries.length} files`;
+        : `batch update ${entries.length} files [skip ci]`;
     await this._batchCommit({ set: entries, message });
   }
 
@@ -350,7 +350,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const message =
       toDelete.length === 1
         ? this.msg(toDelete[0]!, null)
-        : `batch delete ${toDelete.length} files`;
+        : `batch delete ${toDelete.length} files [skip ci]`;
     await this._batchCommit({ delete: toDelete, message });
     return true;
   }
@@ -384,7 +384,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (allPaths.length > 0) {
       await this._batchCommit({
         delete: allPaths,
-        message: `clear: remove ${allPaths.length} files`,
+        message: `clear: remove ${allPaths.length} files [skip ci]`,
       });
     }
   }
