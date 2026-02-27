@@ -361,7 +361,7 @@ describe("setMany", () => {
     expect(mockFiles.get("b/2.txt")?.content).toBe("world");
     expect(mockFiles.get("c/3.txt")?.content).toBe("!");
     expect(messages).toHaveLength(1); // single commit
-    expect(messages[0]).toBe("batch update 3 files");
+    expect(messages[0]).toBe("batch set 3 files [skip ci]");
   });
 
   test("uses msg hook for single-entry batch", async () => {
@@ -415,7 +415,7 @@ describe("deleteMany", () => {
     expect(mockFiles.has("b")).toBe(false);
     expect(mockFiles.has("c")).toBe(true);
     expect(messages).toHaveLength(1); // single commit
-    expect(messages[0]).toBe("batch delete 2 files");
+    expect(messages[0]).toBe("batch delete 2 files [skip ci]");
   });
 
   test("returns false when no keys exist", async () => {
@@ -501,15 +501,15 @@ describe("msg hook", () => {
     expect(messages[messages.length - 1]).toBe("chore: rm to/remove");
   });
 
-  test("default msg falls back to 'update <key>' / 'delete <key>'", async () => {
+  test("default msg falls back to 'update <key> [skip ci]' / 'delete <key> [skip ci]'", async () => {
     const { store, messages } = makeStore();
     await store.set("k", "v");
-    expect(messages[messages.length - 1]).toBe("update k");
+    expect(messages[messages.length - 1]).toBe("update k [skip ci]");
 
     const files2 = new Map([["k2", { content: "v", sha: "s1" }]]);
     const { store: store2, messages: messages2 } = makeStore(files2);
     await store2.delete("k2");
-    expect(messages2[messages2.length - 1]).toBe("delete k2");
+    expect(messages2[messages2.length - 1]).toBe("delete k2 [skip ci]");
   });
 });
 

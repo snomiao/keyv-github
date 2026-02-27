@@ -13,11 +13,19 @@ export interface KeyvGithubOptions {
   branch?: string;
   client?: Octokit | Octokit["rest"];
   /**
-   * Customize the commit message. value is null for deletes.
+   * Customize the commit message for single-key operations. value is null for deletes.
    * @warning Consider adding `[skip ci]` to your commit messages to prevent
    * triggering CI workflows on each key-value update.
    */
   msg?: (key: string, value: string | null) => string;
+  /**
+   * Customize the commit message for batch operations (setMany, deleteMany, clear).
+   * @param operation - 'set' | 'delete' | 'clear'
+   * @param paths - array of file paths being modified
+   * @warning Consider adding `[skip ci]` to your commit messages to prevent
+   * triggering CI workflows on each key-value update.
+   */
+  batchMsg?: (operation: "set" | "delete" | "clear", paths: string[]) => string;
   /** clear() deletes every file in the repo and is disabled by default. Set to true to allow it. */
   enableClear?: boolean;
   /** Path prefix prepended to every key (e.g. 'data/'). Defaults to ''. */
@@ -47,6 +55,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
   }
   rest: Octokit["rest"];
   private msg: (key: string, value: string | null) => string;
+  private batchMsg: (operation: "set" | "delete" | "clear", paths: string[]) => string;
   readonly enableClear: boolean;
   readonly prefix: string;
   readonly suffix: string;
@@ -71,6 +80,13 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         : (options.client ?? new Octokit().rest);
     this.msg =
       options.msg ?? ((key, value) => (value === null ? `delete ${key} [skip ci]` : `update ${key} [skip ci]`));
+    this.batchMsg =
+      options.batchMsg ??
+      ((op, paths) => {
+        const n = paths.length;
+        if (op === "clear") return `clear: remove ${n} files [skip ci]`;
+        return `batch ${op} ${n} files [skip ci]`;
+      });
     this.enableClear = options.enableClear ?? false;
     this.prefix = options.prefix ?? "";
     this.suffix = options.suffix ?? "";
@@ -312,10 +328,11 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       this.toPath(key),
       String(value),
     ]);
+    const paths = entries.map(([p]) => p);
     const message =
       entries.length === 1
         ? this.msg(entries[0]![0], entries[0]![1])
-        : `batch update ${entries.length} files [skip ci]`;
+        : this.batchMsg("set", paths);
     await this._batchCommit({ set: entries, message });
   }
 
@@ -350,7 +367,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     const message =
       toDelete.length === 1
         ? this.msg(toDelete[0]!, null)
-        : `batch delete ${toDelete.length} files [skip ci]`;
+        : this.batchMsg("delete", toDelete);
     await this._batchCommit({ delete: toDelete, message });
     return true;
   }
@@ -384,7 +401,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (allPaths.length > 0) {
       await this._batchCommit({
         delete: allPaths,
-        message: `clear: remove ${allPaths.length} files [skip ci]`,
+        message: this.batchMsg("clear", allPaths),
       });
     }
   }
