@@ -12,7 +12,11 @@ export interface KeyvGithubOptions {
   url: string;
   branch?: string;
   client?: Octokit | Octokit["rest"];
-  /** Customize the commit message. value is null for deletes. */
+  /**
+   * Customize the commit message. value is null for deletes.
+   * @warning Consider adding `[skip ci]` to your commit messages to prevent
+   * triggering CI workflows on each key-value update.
+   */
   msg?: (key: string, value: string | null) => string;
   /** clear() deletes every file in the repo and is disabled by default. Set to true to allow it. */
   enableClear?: boolean;
@@ -66,7 +70,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
         ? options.client.rest
         : (options.client ?? new Octokit().rest);
     this.msg =
-      options.msg ?? ((key, value) => (value === null ? `delete ${key}` : `update ${key}`));
+      options.msg ?? ((key, value) => (value === null ? `delete ${key} [skip ci]` : `update ${key} [skip ci]`));
     this.enableClear = options.enableClear ?? false;
     this.prefix = options.prefix ?? "";
     this.suffix = options.suffix ?? "";
@@ -136,13 +140,13 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
     if (ttl !== undefined) {
       throw new Error(
         "TTL is not supported natively by keyv-github. " +
-          "Use new Keyv(store) which handles TTL via value expiration metadata.",
+        "Use new Keyv(store) which handles TTL via value expiration metadata.",
       );
     }
     if (typeof value !== "string") {
       throw new Error(
         "keyv-github only supports string values natively. " +
-          "Use new Keyv(store) which serializes values automatically.",
+        "Use new Keyv(store) which serializes values automatically.",
       );
     }
     const path = this.toPath(key);
@@ -299,7 +303,7 @@ export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter
       if (typeof value !== "string") {
         throw new Error(
           "keyv-github only supports string values natively. " +
-            "Use new Keyv(store) which serializes values automatically.",
+          "Use new Keyv(store) which serializes values automatically.",
         );
       }
       this.validatePath(this.toPath(key));
