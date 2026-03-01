@@ -17,6 +17,8 @@
 	"type": "module",
 	"dependencies": {
 		"keyv": "^5.6.0",
+		"keyv-dir-store": "^0.0.9",
+		"keyv-nest": "^0.0.7",
 		"octokit": "^5.0.5"
 	},
 	"devDependencies": {

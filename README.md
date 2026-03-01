@@ -25,12 +25,22 @@ import KeyvNest from "keyv-nest";
 import { KeyvDirStore } from "keyv-dir-store";
 import KeyvGithub from "keyv-github";
 
+// Simple memory store (avoids Keyv namespace prefix issues)
+const memoryStore = {
+  cache: new Map<string, any>(),
+  opts: { url: "", dialect: "map" },
+  get(key: string) { return this.cache.get(key); },
+  set(key: string, value: any) { this.cache.set(key, value); },
+  delete(key: string) { return this.cache.delete(key); },
+  clear() { this.cache.clear(); },
+};
+
 // Use same prefix/suffix so local cache mirrors GitHub paths
 const prefix = "data/";
 const suffix = ".json";
 
 const store = KeyvNest(
-  new Keyv(),                              // L1: Memory (fastest)
+  memoryStore,                             // L1: Memory (fastest)
   new KeyvDirStore("./cache", {            // L2: Local files (fast)
     prefix,
     suffix,
@@ -39,9 +49,13 @@ const store = KeyvNest(
   new KeyvGithub("owner/repo/tree/main", { client, prefix, suffix })  // L3: GitHub
 );
 
-const kv = new Keyv({ store });
+// Wrap with Keyv (use empty namespace to preserve keys)
+(store as any).opts = { url: "", dialect: "keyv-nest" };
+const kv = new Keyv({ store, namespace: "" });
 // key "foo" -> ./cache/data/foo.json (local) and data/foo.json (GitHub)
 ```
+
+See [demo-best-practice.ts](./demo-best-practice.ts) for a runnable example.
 
 Reads check L1 → L2 → L3, with automatic backfill to faster layers on cache miss.
 
