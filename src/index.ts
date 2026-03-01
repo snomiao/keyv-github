@@ -41,6 +41,10 @@ export interface KeyvGithubOptions {
  *
  * Each key is a file path in the repo; the file content is the value.
  * Example: new KeyvGithub("https://github.com/owner/repo/tree/main", { client })
+ *
+ * @warning **Keys are validated but NOT sanitized.** You must ensure keys are valid
+ * GitHub file paths before calling any method. Invalid keys throw an error.
+ * Requirements: non-empty, no leading/trailing `/`, no `//`, no `.`/`..` segments, no null bytes.
  */
 export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
   opts: KeyvGithubOptions;

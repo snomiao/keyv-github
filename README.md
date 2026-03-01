@@ -99,6 +99,8 @@ const store = new KeyvGithub("owner/repo", {
 
 ## Key rules
 
+⚠️ **Keys are validated but NOT sanitized.** You must sanitize keys yourself before passing them to this adapter. Invalid keys will throw an error.
+
 Keys must be valid relative file paths:
 
 - Non-empty
@@ -108,6 +110,18 @@ Keys must be valid relative file paths:
 - No null bytes
 
 Invalid keys throw synchronously before any API request.
+
+```ts
+// ✗ These will throw errors
+await store.set("/absolute/path", "value");     // leading slash
+await store.set("path/", "value");               // trailing slash
+await store.set("path/../escape", "value");      // directory traversal
+await store.set("path//double", "value");        // double slashes
+
+// ✓ Valid keys
+await store.set("data/file.txt", "value");
+await store.set("nested/path/key.json", "value");
+```
 
 ## See Also
 
