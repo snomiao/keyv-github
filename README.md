@@ -109,6 +109,8 @@ Keys must be valid relative file paths:
 - No `.` or `..` segments
 - No null bytes
 
+**OS-specific characters** like `<>:"|?*\` (invalid on Windows) are NOT validated — you must sanitize these yourself if your keys might contain them.
+
 Invalid keys throw synchronously before any API request.
 
 ```ts

@@ -45,6 +45,7 @@ export interface KeyvGithubOptions {
  * @warning **Keys are validated but NOT sanitized.** You must ensure keys are valid
  * GitHub file paths before calling any method. Invalid keys throw an error.
  * Requirements: non-empty, no leading/trailing `/`, no `//`, no `.`/`..` segments, no null bytes.
+ * OS-specific invalid characters (e.g. `<>:"|?*\` on Windows) are NOT checked — sanitize them yourself.
  */
 export default class KeyvGithub extends EventEmitter implements KeyvStoreAdapter {
   opts: KeyvGithubOptions;
