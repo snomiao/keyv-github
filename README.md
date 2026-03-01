@@ -15,6 +15,26 @@ Every `set` costs **2 API calls** (read SHA + write), every `delete` costs **2**
 
 Use a [GitHub App](https://docs.github.com/en/developers/apps) token or a fine-grained PAT with `contents: write` permission to maximise your quota.
 
+### Best Practice: Use a local cache layer
+
+To reduce API calls, chain a local file cache before keyv-github using [keyv-nest](https://github.com/snomiao/keyv-nest) and [keyv-dir-store](https://github.com/snomiao/keyv-dir-store):
+
+```ts
+import Keyv from "keyv";
+import KeyvNest from "keyv-nest";
+import { KeyvDirStore } from "keyv-dir-store";
+import KeyvGithub from "keyv-github";
+
+const store = KeyvNest(
+  new KeyvDirStore("./cache/github-kv"),  // L1: Local file cache (fast)
+  new KeyvGithub("owner/repo/tree/main", { client })  // L2: GitHub (slow)
+);
+
+const kv = new Keyv({ store });
+```
+
+This way reads hit the local cache first, and only fetch from GitHub on a miss.
+
 ## Install
 
 ```sh
