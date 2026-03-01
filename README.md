@@ -25,21 +25,12 @@ import KeyvNest from "keyv-nest";
 import { KeyvDirStore } from "keyv-dir-store";
 import KeyvGithub from "keyv-github";
 
-// Wrap Map as a store
-const memoryStore = {
-  cache: new Map<string, any>(),
-  get(key: string) { return this.cache.get(key); },
-  set(key: string, value: any) { this.cache.set(key, value); },
-  delete(key: string) { return this.cache.delete(key); },
-  clear() { this.cache.clear(); },
-};
-
 // Use same prefix/suffix so local cache mirrors GitHub paths
 const prefix = "data/";
 const suffix = ".json";
 
 const store = KeyvNest(
-  memoryStore,                             // L1: Memory (fastest)
+  new Keyv(),                              // L1: Memory (fastest)
   new KeyvDirStore("./cache", {            // L2: Local files (fast)
     prefix,
     suffix,
