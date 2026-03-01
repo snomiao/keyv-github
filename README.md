@@ -34,13 +34,22 @@ const memoryStore = {
   clear() { this.cache.clear(); },
 };
 
+// Use same prefix/suffix so local cache mirrors GitHub paths
+const prefix = "data/";
+const suffix = ".json";
+
 const store = KeyvNest(
   memoryStore,                             // L1: Memory (fastest)
-  new KeyvDirStore("./cache/github-kv"),   // L2: Local files (fast)
-  new KeyvGithub("owner/repo/tree/main", { client })  // L3: GitHub (slow)
+  new KeyvDirStore("./cache", {            // L2: Local files (fast)
+    prefix,
+    suffix,
+    filename: (k) => k,  // use key as-is, no hashing
+  }),
+  new KeyvGithub("owner/repo/tree/main", { client, prefix, suffix })  // L3: GitHub
 );
 
 const kv = new Keyv({ store });
+// key "foo" -> ./cache/data/foo.json (local) and data/foo.json (GitHub)
 ```
 
 Reads check L1 → L2 → L3, with automatic backfill to faster layers on cache miss.
