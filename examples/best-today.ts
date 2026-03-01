@@ -19,14 +19,7 @@ const prefix = "data/";
 const suffix = ".txt";
 
 // L1: Memory cache
-const cache = new Map<string, string>();
-const memoryStore = {
-  opts: { url: "", dialect: "map" },
-  get: (key: string) => cache.get(key),
-  set: (key: string, value: string) => cache.set(key, value),
-  delete: (key: string) => cache.delete(key),
-  clear: () => cache.clear(),
-};
+const memoryStore = new Keyv();
 
 // L2: File cache
 const fileStore = new KeyvDirStore("./cache", { prefix, suffix, filename: (k: string) => k });
