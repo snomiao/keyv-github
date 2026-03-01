@@ -15,9 +15,9 @@ Every `set` costs **2 API calls** (read SHA + write), every `delete` costs **2**
 
 Use a [GitHub App](https://docs.github.com/en/developers/apps) token or a fine-grained PAT with `contents: write` permission to maximise your quota.
 
-### Best Practice: Use a local cache layer
+### Best Practice: Use cache layers
 
-To reduce API calls, chain a local file cache before keyv-github using [keyv-nest](https://github.com/snomiao/keyv-nest) and [keyv-dir-store](https://github.com/snomiao/keyv-dir-store):
+To reduce API calls, chain memory and file caches before keyv-github using [keyv-nest](https://github.com/snomiao/keyv-nest) and [keyv-dir-store](https://github.com/snomiao/keyv-dir-store):
 
 ```ts
 import Keyv from "keyv";
@@ -25,15 +25,25 @@ import KeyvNest from "keyv-nest";
 import { KeyvDirStore } from "keyv-dir-store";
 import KeyvGithub from "keyv-github";
 
+// Wrap Map as a store
+const memoryStore = {
+  cache: new Map<string, any>(),
+  get(key: string) { return this.cache.get(key); },
+  set(key: string, value: any) { this.cache.set(key, value); },
+  delete(key: string) { return this.cache.delete(key); },
+  clear() { this.cache.clear(); },
+};
+
 const store = KeyvNest(
-  new KeyvDirStore("./cache/github-kv"),  // L1: Local file cache (fast)
-  new KeyvGithub("owner/repo/tree/main", { client })  // L2: GitHub (slow)
+  memoryStore,                             // L1: Memory (fastest)
+  new KeyvDirStore("./cache/github-kv"),   // L2: Local files (fast)
+  new KeyvGithub("owner/repo/tree/main", { client })  // L3: GitHub (slow)
 );
 
 const kv = new Keyv({ store });
 ```
 
-This way reads hit the local cache first, and only fetch from GitHub on a miss.
+Reads check L1 → L2 → L3, with automatic backfill to faster layers on cache miss.
 
 ## Install
 
