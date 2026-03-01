@@ -32,40 +32,37 @@ const prefix = "data/";
 const suffix = ".txt";
 
 // Simple Map-based memory store (no namespace prefix)
+const cache = new Map<string, string>();
 const memoryStore = {
-  cache: new Map<string, any>(),
   opts: { url: "", dialect: "map" },
-  get(key: string) { return this.cache.get(key); },
-  set(key: string, value: any) { this.cache.set(key, value); },
-  delete(key: string) { return this.cache.delete(key); },
-  clear() { this.cache.clear(); },
+  get(key: string) { return cache.get(key); },
+  set(key: string, value: string) { cache.set(key, value); },
+  delete(key: string) { return cache.delete(key); },
+  clear() { cache.clear(); },
 };
 
-// Build cache layers
-const layers: any[] = [
-  memoryStore,                             // L1: Memory (fastest)
-  new KeyvDirStore("./cache", {            // L2: Local files (fast)
-    prefix,
-    suffix,
-    filename: (k) => k,  // use key as-is, no hashing
-  }),
-];
+// L2: Local file cache
+const fileStore = new KeyvDirStore("./cache", {
+  prefix,
+  suffix,
+  filename: (k: string) => k,  // use key as-is, no hashing
+});
 
-// Add GitHub layer if token is available
-if (TOKEN && !LOCAL_ONLY) {
-  const client = new Octokit({ auth: TOKEN });
-  layers.push(
-    new KeyvGithub(`${REPO}/tree/main`, { client, prefix, suffix })  // L3: GitHub
-  );
-  console.log(`Using 3-layer cache: Memory -> Files -> GitHub (${REPO})`);
-} else {
-  console.log("Using 2-layer cache: Memory -> Files (local only)");
-}
+// Build nested store
+const store = TOKEN && !LOCAL_ONLY
+  ? (() => {
+      const client = new Octokit({ auth: TOKEN });
+      const githubStore = new KeyvGithub(`${REPO}/tree/main`, { client, prefix, suffix });
+      console.log(`Using 3-layer cache: Memory -> Files -> GitHub (${REPO})`);
+      return KeyvNest(memoryStore, fileStore, githubStore);  // L1 -> L2 -> L3
+    })()
+  : (() => {
+      console.log("Using 2-layer cache: Memory -> Files (local only)");
+      return KeyvNest(memoryStore, fileStore);  // L1 -> L2
+    })();
 
-const store = KeyvNest(...layers);
-// Add opts for Keyv compatibility
-(store as any).opts = { url: "", dialect: "keyv-nest" };
-// Use empty namespace to avoid keyv: prefix on keys
+// Add opts for Keyv compatibility and use empty namespace to avoid keyv: prefix
+store.opts = { url: "", dialect: "keyv-nest" };
 const kv = new Keyv({ store, namespace: "" });
 
 // Demo: Write today's best thing
