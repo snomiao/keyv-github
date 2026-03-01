@@ -55,7 +55,7 @@ const kv = new Keyv({ store, namespace: "" });
 // key "foo" -> ./cache/data/foo.json (local) and data/foo.json (GitHub)
 ```
 
-See [demo-best-practice.ts](./demo-best-practice.ts) for a runnable example.
+See [examples/best-today.ts](./examples/best-today.ts) for a runnable example.
 
 Reads check L1 → L2 → L3, with automatic backfill to faster layers on cache miss.
 

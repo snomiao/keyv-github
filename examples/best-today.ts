@@ -1,21 +1,21 @@
 /**
- * Demo: Best Practice - 3-layer cache with keyv-nest
+ * Example: Best Practice - 3-layer cache with keyv-nest
  *
- * This demo shows how to use memory + file + GitHub cache layers
+ * This example shows how to use memory + file + GitHub cache layers
  * to minimize API calls while keeping data in sync.
  *
  * Run with GitHub:
- *   GITHUB_TOKEN=your_token GITHUB_REPO=owner/repo bun demo-best-practice.ts
+ *   GITHUB_TOKEN=your_token GITHUB_REPO=owner/repo bun examples/best-today.ts
  *
  * Run local-only (no GitHub):
- *   bun demo-best-practice.ts --local
+ *   bun examples/best-today.ts --local
  */
 
 import Keyv from "keyv";
 import KeyvNest from "keyv-nest";
 import { KeyvDirStore } from "keyv-dir-store";
 import { Octokit } from "octokit";
-import KeyvGithub from "./src/index.ts";
+import KeyvGithub from "../src/index.ts";
 
 const LOCAL_ONLY = process.argv.includes("--local");
 const REPO = process.env.GITHUB_REPO || "snomiao/keyv-github-demo";
@@ -24,7 +24,7 @@ const TOKEN = process.env.GITHUB_TOKEN;
 if (!LOCAL_ONLY && !TOKEN) {
   console.log("No GITHUB_TOKEN set. Running in local-only mode.");
   console.log("To sync with GitHub, run:");
-  console.log("  GITHUB_TOKEN=xxx GITHUB_REPO=owner/repo bun demo-best-practice.ts\n");
+  console.log("  GITHUB_TOKEN=xxx GITHUB_REPO=owner/repo bun examples/best-today.ts\n");
 }
 
 // Use same prefix/suffix so local cache mirrors GitHub paths

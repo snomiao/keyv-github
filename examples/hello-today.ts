@@ -34,4 +34,4 @@ for (const bad of invalidPaths) {
   } catch (e: any) {
     console.log(`  ✗ ${JSON.stringify(bad)} → ${e.message}`);
   }
-}
+}  
