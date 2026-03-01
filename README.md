@@ -26,13 +26,13 @@ import { KeyvDirStore } from "keyv-dir-store";
 import KeyvGithub from "keyv-github";
 
 // Simple memory store (avoids Keyv namespace prefix issues)
+const cache = new Map<string, string>();
 const memoryStore = {
-  cache: new Map<string, any>(),
   opts: { url: "", dialect: "map" },
-  get(key: string) { return this.cache.get(key); },
-  set(key: string, value: any) { this.cache.set(key, value); },
-  delete(key: string) { return this.cache.delete(key); },
-  clear() { this.cache.clear(); },
+  get(key: string) { return cache.get(key); },
+  set(key: string, value: string) { cache.set(key, value); },
+  delete(key: string) { return cache.delete(key); },
+  clear() { cache.clear(); },
 };
 
 // Use same prefix/suffix so local cache mirrors GitHub paths
@@ -44,13 +44,13 @@ const store = KeyvNest(
   new KeyvDirStore("./cache", {            // L2: Local files (fast)
     prefix,
     suffix,
-    filename: (k) => k,  // use key as-is, no hashing
+    filename: (k: string) => k,  // use key as-is, no hashing
   }),
   new KeyvGithub("owner/repo/tree/main", { client, prefix, suffix })  // L3: GitHub
 );
 
 // Wrap with Keyv (use empty namespace to preserve keys)
-(store as any).opts = { url: "", dialect: "keyv-nest" };
+store.opts = { url: "", dialect: "keyv-nest" };
 const kv = new Keyv({ store, namespace: "" });
 // key "foo" -> ./cache/data/foo.json (local) and data/foo.json (GitHub)
 ```
