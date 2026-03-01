@@ -13,8 +13,7 @@
 
 import Keyv from "keyv";
 import KeyvNest from "keyv-nest";
-// Use local version with prefix/suffix support (pending npm publish)
-import { KeyvDirStore } from "./tmp/keyv-dir-store/index.ts";
+import { KeyvDirStore } from "keyv-dir-store";
 import { Octokit } from "octokit";
 import KeyvGithub from "./src/index.ts";
 
